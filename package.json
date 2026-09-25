@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "description": "Pixel-art mobile browser climbing game where you move by gun recoil.",
-  "type": "module",
   "scripts": {
     "build": "node tools/build.mjs",
     "solve": "node tools/solve.mjs",
