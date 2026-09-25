@@ -1,0 +1,100 @@
+<!--HEAD-->
+<title>Recoil Climb</title>
+<meta name="theme-color" content="#0d1030">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --night: #0d1030;
+    --rock: #1d2b53;
+    --snow: #fff1e8;
+    --dim: #83769c;
+    --hood: #ffec27;
+    --ember: #ffa300;
+    --moss: #00e436;
+    --danger: #ff004d;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; background: var(--night); color: var(--snow); overflow: hidden; }
+  body { font-family: 'DotGothic16', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', monospace; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; overscroll-behavior: none; }
+  #game { position: fixed; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; display: block; }
+  .btn-pause { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 40px; height: 40px; border: 2px solid var(--snow); background: rgba(13,16,48,.6); color: var(--snow); font: inherit; font-size: 16px; line-height: 1; z-index: 5; }
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: rgba(13,16,48,.82); z-index: 10; overflow-y: auto; touch-action: auto; }
+  .panel { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; text-align: center; }
+  .logo { margin: 0; font-size: 40px; line-height: 1.05; letter-spacing: .04em; color: var(--hood); text-shadow: 3px 3px 0 var(--danger), 6px 6px 0 var(--rock); text-wrap: balance; }
+  .sub { margin: 0; color: var(--dim); font-size: 13px; letter-spacing: .2em; }
+  .howto { margin: 0; padding: 12px 14px; list-style: none; text-align: left; border: 2px solid var(--rock); background: rgba(29,43,83,.55); display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.5; }
+  .howto b { color: var(--hood); font-weight: normal; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  button.act { font: inherit; font-size: 18px; padding: 12px 8px; border: 2px solid var(--snow); background: var(--rock); color: var(--snow); box-shadow: 4px 4px 0 #000; cursor: pointer; }
+  button.act.primary { background: var(--ember); color: var(--night); border-color: var(--snow); }
+  button.act:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #000; }
+  button.act:disabled { opacity: .35; }
+  button:focus-visible { outline: 2px dashed var(--hood); outline-offset: 3px; }
+  .seg { display: flex; border: 2px solid var(--dim); }
+  .seg button { flex: 1; font: inherit; font-size: 14px; padding: 8px 4px; border: 0; background: transparent; color: var(--dim); }
+  .seg button[aria-pressed="true"] { background: var(--dim); color: var(--night); }
+  .label { font-size: 12px; color: var(--dim); letter-spacing: .15em; text-align: left; margin-bottom: -8px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 16px; text-align: left; font-variant-numeric: tabular-nums; }
+  .stats dt { color: var(--dim); }
+  .stats dd { margin: 0; text-align: right; }
+  .small { font-size: 12px; color: var(--dim); margin: 0; }
+</style>
+<!--/HEAD-->
+<canvas id="game" width="144" height="256"></canvas>
+<button class="btn-pause" id="btnPause" aria-label="ポーズ" hidden>II</button>
+
+<div class="overlay" id="scrTitle">
+  <div class="panel">
+    <div>
+      <h1 class="logo">RECOIL<br>CLIMB</h1>
+      <p class="sub">反動だけで、頂上へ。</p>
+    </div>
+    <ul class="howto">
+      <li>左下の <b>◀ ▶</b> で歩く。ジャンプはない。</li>
+      <li>画面を<b>押してドラッグ→離す</b>と、その向きに撃つ。</li>
+      <li>撃つと<b>反対向きに吹っ飛ぶ</b>。下に撃てば上へ。</li>
+      <li>空中で撃てるのは<b>2発</b>。着地か<b style="color:var(--moss)">緑の結晶</b>で装填。</li>
+      <li>落ちたら、落ちたところからやり直し。</li>
+    </ul>
+    <div class="label">射撃操作</div>
+    <div class="seg" id="modeSeg">
+      <button id="modeStick" data-mode="stick" aria-pressed="true">ドラッグして離す</button>
+      <button id="modeTap" data-mode="tap" aria-pressed="false">タップした方向</button>
+    </div>
+    <div class="row">
+      <button class="act" id="btnNew">はじめから</button>
+      <button class="act primary" id="btnCont">つづきから</button>
+    </div>
+    <p class="small" id="bestLine">PCは A/D か ←→ で移動、マウスで狙ってクリック。</p>
+  </div>
+</div>
+
+<div class="overlay" id="scrPause" hidden>
+  <div class="panel">
+    <h2 class="logo" style="font-size:28px">PAUSE</h2>
+    <dl class="stats" id="pauseStats"></dl>
+    <div class="label">射撃操作</div>
+    <div class="seg" id="modeSeg2">
+      <button data-mode="stick" aria-pressed="true">ドラッグして離す</button>
+      <button data-mode="tap" aria-pressed="false">タップした方向</button>
+    </div>
+    <div class="row">
+      <button class="act" id="btnSound">音: ON</button>
+      <button class="act" id="btnTitle">タイトルへ</button>
+    </div>
+    <button class="act primary" id="btnResume">つづける</button>
+  </div>
+</div>
+
+<div class="overlay" id="scrClear" hidden>
+  <div class="panel">
+    <h2 class="logo" style="font-size:34px">SUMMIT!</h2>
+    <p class="sub">頂上に到達した。</p>
+    <dl class="stats" id="clearStats"></dl>
+    <button class="act primary" id="btnAgain">もう一度登る</button>
+  </div>
+</div>
+<!--SCRIPTS-->
