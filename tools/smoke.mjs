@@ -1,5 +1,5 @@
-// Headless smoke test: loads the build in a phone viewport, starts a game,
-// fires a few shots via touch drags and saves screenshots to ./shots/.
+// Headless smoke test: loads the build in a phone viewport, plays a few shots with
+// touch drags and saves screenshots to ./shots/.
 // Needs playwright: NODE_PATH=$(npm root -g) node tools/smoke.mjs
 import { createRequire } from 'module';
 import { mkdirSync } from 'fs';
@@ -10,41 +10,47 @@ const url = 'file://' + new URL('../dist/index.html', import.meta.url).pathname;
 const out = new URL('../shots/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
 
-const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined });
+const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-
-async function drag(x0, y0, x1, y1) {
-  const cdp = await ctx.newCDPSession(page);
-  const pt = (x, y) => [{ x, y, id: 1 }];
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(x0, y0) });
-  for (let i = 1; i <= 4; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(x0 + (x1 - x0) * i / 4, y0 + (y1 - y0) * i / 4) });
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+page.on('console', (m) => { if (m.type() === 'error' && !/ERR_TUNNEL|fonts/.test(m.text())) errors.push(m.text()); });
+const cdp = await ctx.newCDPSession(page);
+const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+async function drag(x0, y0, x1, y1, { hold = 0, shot = null } = {}) {
+  await touch('touchStart', x0, y0);
+  for (let i = 1; i <= 5; i++) await touch('touchMove', x0 + (x1 - x0) * i / 5, y0 + (y1 - y0) * i / 5);
+  if (hold) await page.waitForTimeout(hold);
+  if (shot) await page.screenshot({ path: out + shot });
+  await touch('touchEnd');
+}
+async function start(hash = '') {
+  await page.goto('about:blank');
+  await page.goto(url + hash);
+  await page.waitForTimeout(400);
+  await page.tap('#btnNew');
+  if (await page.isVisible('#scrTitle')) await page.tap('#btnNew');
+  await page.waitForTimeout(600);
 }
 
 await page.goto(url);
-await page.waitForTimeout(800);
+await page.waitForTimeout(600);
 await page.screenshot({ path: out + '1-title.png' });
-await page.tap('#btnNew');
-await page.waitForTimeout(500);
-await drag(250, 400, 250, 480); // aim down -> fly up
+await start();
+await page.screenshot({ path: out + '2-start-sign.png' });
+await drag(200, 500, 110, 540, { hold: 200, shot: '3-aiming.png' }); // shoot down-left -> fly right
+await page.waitForTimeout(900);
+await page.screenshot({ path: out + '4-after.png' });
+await start('#row57');
+await drag(200, 400, 170, 470, { hold: 150 });
 await page.waitForTimeout(250);
-await drag(250, 400, 180, 470); // down-left -> up-right
-await page.waitForTimeout(120);
-await page.screenshot({ path: out + '2-shot.png' });
-await page.waitForTimeout(1500);
-await page.screenshot({ path: out + '3-landed.png' });
-
-await page.goto('about:blank');
-await page.goto(url + '#row40');
-await page.waitForTimeout(500);
-await page.tap('#btnNew');
-if (await page.isVisible('#btnNew')) await page.tap('#btnNew'); // confirm overwrite
-await page.waitForTimeout(700);
-await page.screenshot({ path: out + '4-chimney.png' });
+await drag(200, 400, 150, 470, { hold: 200, shot: '5-garden-air-aim.png' });
+await page.waitForTimeout(1200);
+await start('#row37');
+await page.screenshot({ path: out + '6-summit.png' });
+await start('#row25');
+await page.screenshot({ path: out + '7-heaven.png' });
 
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');
 await browser.close();

@@ -4,52 +4,62 @@
 
   const C = {
     TILE: 8,
-    G: 0.2,           // gravity px/frame^2 (60fps)
+    G: 0.2,            // gravity px/frame^2 (60fps)
     MAXFALL: 4.2,
-    RECOIL: 4.0,      // shot impulse
-    KEEP: 0.25,       // fraction of previous velocity kept when shooting
+    RECOIL: 4.0,       // full-power shot impulse
+    MINPOW: 0.35,      // weakest shot (short drag)
+    KEEP: 0.25,        // fraction of previous velocity kept when shooting
     AIR_DRAG: 0.975,
-    AIR_ACC: 0.07,
-    AIR_MAX: 1.0,
-    WALK: 0.9,
-    GROUND_ACC: 0.25,
-    FRIC: 0.7,
-    ICE_FRIC: 0.985,
-    ICE_ACC: 0.04,
-    AMMO: 2,
-    COOLDOWN: 9,
+    FRIC: 0.86,        // ground slide damping per frame
+    ICE_FRIC: 0.99,
+    AMMO: 2,           // shots available in the air
+    COOLDOWN: 8,
     PW: 6,
     PH: 7,
-    SPIKE_BOUNCE: 3.2,
-    STUN: 18,
     CRYSTAL_RESPAWN: 150,
+    RANGE: 220,        // bullet range px (total, including bounces)
+    BOUNCES: 3,        // metal ricochets per bullet
+    HIT_R: 6,          // bullet-vs-crystal radius
   };
+
+  // Tiles: # rock  = ice  g glass  x crack  m metal  c cloud  ^v<> spikes
+  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, m: 1, c: 1 };
+  const isSolid = (c) => SOLID[c] === 1;
+  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'm';
 
   function makeLevel(rows) {
     const w = Math.max(...rows.map((r) => r.length));
     const h = rows.length;
-    const grid = rows.map((r) => r.padEnd(w, '.').split(''));
-    const crystals = [];
-    let flag = null;
-    let start = null;
+    const grid = rows.map((r) => r.padEnd(w, '#').split(''));
+    const L = { w, h, grid, crystals: [], relics: [], signs: [], flag: null, gate: null, start: null, cmap: new Map(), changes: [], onBreak: null };
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const c = grid[y][x];
-        if (c === 'o') { crystals.push({ x: x * 8 + 4, y: y * 8 + 4, active: true, t: 0 }); grid[y][x] = '.'; }
-        else if (c === 'F') { flag = { x: x * 8, y: y * 8 }; grid[y][x] = '.'; }
-        else if (c === 'P') { start = { x: x * 8 + 1, y: y * 8 + 1 }; grid[y][x] = '.'; }
+        const c = grid[y][x], px = x * 8, py = y * 8;
+        if (c === 'o') L.crystals.push({ x: px + 4, y: py + 4, active: true, t: 0 });
+        else if (c === '*') L.relics.push({ x: px + 4, y: py + 4, got: false });
+        else if (c >= '1' && c <= '9') L.signs.push({ x: px, y: py, id: +c });
+        else if (c === 'F') L.flag = { x: px, y: py };
+        else if (c === 'H') L.gate = { x: px, y: py };
+        else if (c === 'P') L.start = { x: px + 1, y: py + 1 };
+        else continue;
+        grid[y][x] = '.';
       }
     }
-    return { w, h, grid, crystals, flag, start };
+    L.crystals.forEach((c, i) => {
+      const tx = (c.x - 4) / 8, ty = (c.y - 4) / 8;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const k = (ty + dy) * w + tx + dx;
+        if (!L.cmap.has(k)) L.cmap.set(k, []);
+        L.cmap.get(k).push(i);
+      }
+    });
+    return L;
   }
 
   function tileAt(L, tx, ty) {
-    if (tx < 0 || tx >= L.w) return '#';
-    if (ty < 0) return '.';
-    if (ty >= L.h) return '#';
+    if (tx < 0 || tx >= L.w || ty < 0 || ty >= L.h) return '#';
     return L.grid[ty][tx];
   }
-  const isSolid = (c) => c === '#' || c === '=';
 
   function solidRect(L, x, y, w, h) {
     const x0 = Math.floor(x / 8), x1 = Math.floor((x + w - 0.001) / 8);
@@ -61,10 +71,9 @@
   }
 
   function newPlayer(x, y) {
-    return { x, y, vx: 0, vy: 0, ammo: C.AMMO, cd: 0, grounded: false, onIce: false, stun: 0, facing: 1, won: false };
+    return { x, y, vx: 0, vy: 0, ammo: C.AMMO, cd: 0, grounded: false, onIce: false, dead: false, won: false, heaven: false };
   }
 
-  // Move along one axis in <=1px sub-steps; snap to tile edge on contact.
   function moveX(L, p, d) {
     if (!d) return false;
     const n = Math.ceil(Math.abs(d)), inc = d / n;
@@ -96,57 +105,103 @@
 
   const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 
-  function checkSpikes(L, p) {
+  function touchingSpikes(L, p) {
     const x0 = Math.floor(p.x / 8), x1 = Math.floor((p.x + C.PW) / 8);
     const y0 = Math.floor(p.y / 8), y1 = Math.floor((p.y + C.PH) / 8);
     for (let ty = y0; ty <= y1; ty++)
       for (let tx = x0; tx <= x1; tx++) {
         const c = tileAt(L, tx, ty), bx = tx * 8, by = ty * 8;
-        if (c === '^' && overlap(p.x, p.y, C.PW, C.PH, bx + 1, by + 5, 6, 3)) return [0, -1];
-        if (c === 'v' && overlap(p.x, p.y, C.PW, C.PH, bx + 1, by, 6, 3)) return [0, 1];
-        if (c === '>' && overlap(p.x, p.y, C.PW, C.PH, bx, by + 1, 3, 6)) return [1, 0];
-        if (c === '<' && overlap(p.x, p.y, C.PW, C.PH, bx + 5, by + 1, 3, 6)) return [-1, 0];
+        if (c === '^' && overlap(p.x, p.y, C.PW, C.PH, bx + 1, by + 5, 6, 3)) return true;
+        if (c === 'v' && overlap(p.x, p.y, C.PW, C.PH, bx + 1, by, 6, 3)) return true;
+        if (c === '>' && overlap(p.x, p.y, C.PW, C.PH, bx, by + 1, 3, 6)) return true;
+        if (c === '<' && overlap(p.x, p.y, C.PW, C.PH, bx + 5, by + 1, 3, 6)) return true;
       }
-    return null;
+    return false;
   }
 
-  // inp: { move: -1|0|1, fire: null | {dx, dy} (unit aim vector) }
-  function step(L, p, inp, ev) {
+  function breakTile(L, tx, ty) {
+    L.grid[ty][tx] = '.';
+    L.changes.push([tx, ty]);
+    if (L.onBreak) L.onBreak(tx, ty);
+  }
+
+  // Hitscan bullet from the player's centre. Passes glass/spikes/clouds, bounces off
+  // metal, breaks cracks, and refills ammo when it passes through a crystal.
+  // dry = preview only (no side effects).
+  function fireBullet(L, p, dx, dy, dry) {
+    let x = p.x + C.PW / 2, y = p.y + 4;
+    let tx = Math.floor(x / 8), ty = Math.floor(y / 8);
+    let sx = x, sy = y, dist = 0, bounces = 0;
+    const segs = [], hits = [];
+    const STEP = 0.5;
+    while (dist < C.RANGE) {
+      const nx = x + dx * STEP, ny = y + dy * STEP;
+      dist += STEP;
+      const ntx = Math.floor(nx / 8), nty = Math.floor(ny / 8);
+      if (ntx !== tx || nty !== ty) {
+        const c = tileAt(L, ntx, nty);
+        if (c === 'm') {
+          let fx = ntx !== tx, fy = nty !== ty;
+          if (fx && fy) {
+            if (stopsBullet(tileAt(L, ntx, ty))) fy = false;
+            else if (stopsBullet(tileAt(L, tx, nty))) fx = false;
+          }
+          if (fx) dx = -dx;
+          if (fy) dy = -dy;
+          segs.push({ x0: sx, y0: sy, x1: x, y1: y });
+          sx = x; sy = y;
+          hits.push({ t: 'ping', x, y });
+          if (++bounces > C.BOUNCES) break;
+          continue;
+        }
+        if (stopsBullet(c)) {
+          x = nx; y = ny;
+          if (c === 'x') { if (!dry) breakTile(L, ntx, nty); hits.push({ t: 'break', tx: ntx, ty: nty, x, y }); }
+          else hits.push({ t: 'wall', x, y, dx, dy });
+          break;
+        }
+        tx = ntx; ty = nty;
+      }
+      x = nx; y = ny;
+      if (!dry) {
+        const near = L.cmap.get(ty * L.w + tx);
+        if (near) for (const i of near) {
+          const cr = L.crystals[i];
+          if (cr.active && (x - cr.x) ** 2 + (y - cr.y) ** 2 < C.HIT_R * C.HIT_R) {
+            cr.active = false; cr.t = C.CRYSTAL_RESPAWN;
+            p.ammo = C.AMMO;
+            hits.push({ t: 'crystal', x: cr.x, y: cr.y, remote: true });
+          }
+        }
+      }
+    }
+    segs.push({ x0: sx, y0: sy, x1: x, y1: y });
+    return { segs, hits };
+  }
+
+  // inp: { fire: null | {dx, dy, pow} }   dry: preview simulation, no world side effects
+  function step(L, p, inp, ev, dry) {
+    if (p.dead) return;
     const wasGrounded = p.grounded;
     const fallSpeed = p.vy;
     if (p.cd > 0) p.cd--;
-    if (p.stun > 0) p.stun--;
-    const move = p.stun > 0 ? 0 : (inp.move || 0);
-    if (move) p.facing = move;
 
-    if (inp.fire && p.cd <= 0 && p.ammo > 0) {
+    if (inp && inp.fire && p.cd <= 0 && p.ammo > 0) {
       const { dx, dy } = inp.fire;
-      p.vx = -dx * C.RECOIL + p.vx * C.KEEP;
-      p.vy = -dy * C.RECOIL + p.vy * C.KEEP;
+      const k = C.RECOIL * (inp.fire.pow == null ? 1 : inp.fire.pow);
+      p.vx = -dx * k + p.vx * C.KEEP;
+      p.vy = -dy * k + p.vy * C.KEEP;
       p.ammo--;
       p.cd = C.COOLDOWN;
       p.grounded = false;
-      if (ev) ev.push({ t: 'shot', dx, dy });
+      const b = fireBullet(L, p, dx, dy, dry);
+      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits });
     }
 
     if (p.grounded) {
-      const ice = p.onIce;
-      if (move) {
-        const target = move * C.WALK;
-        if (Math.sign(p.vx) === move && Math.abs(p.vx) > C.WALK) p.vx *= ice ? C.ICE_FRIC : C.FRIC;
-        else {
-          const acc = ice ? C.ICE_ACC : C.GROUND_ACC;
-          p.vx += Math.max(-acc, Math.min(acc, target - p.vx));
-        }
-      } else {
-        p.vx *= ice ? C.ICE_FRIC : C.FRIC;
-        if (Math.abs(p.vx) < 0.02) p.vx = 0;
-      }
-    } else {
-      p.vx *= C.AIR_DRAG;
-      if (move > 0 && p.vx < C.AIR_MAX) p.vx = Math.min(p.vx + C.AIR_ACC, C.AIR_MAX);
-      if (move < 0 && p.vx > -C.AIR_MAX) p.vx = Math.max(p.vx - C.AIR_ACC, -C.AIR_MAX);
-    }
+      p.vx *= p.onIce ? C.ICE_FRIC : C.FRIC;
+      if (Math.abs(p.vx) < 0.03) p.vx = 0;
+    } else p.vx *= C.AIR_DRAG;
     p.vy = Math.min(p.vy + C.G, C.MAXFALL);
 
     if (moveX(L, p, p.vx)) p.vx = 0;
@@ -161,39 +216,40 @@
       if (!wasGrounded && ev) ev.push({ t: 'land', v: fallSpeed });
     }
 
-    const sp = checkSpikes(L, p);
-    if (sp) {
-      if (sp[1]) { p.vy = sp[1] * C.SPIKE_BOUNCE; p.vx = p.vx * 0.5 + (p.vx >= 0 ? -0.6 : 0.6); }
-      if (sp[0]) { p.vx = sp[0] * C.SPIKE_BOUNCE; p.vy = Math.min(p.vy, -1); }
-      p.grounded = false;
-      p.stun = C.STUN;
-      if (ev) ev.push({ t: 'spike' });
+    if (touchingSpikes(L, p)) {
+      p.dead = true;
+      if (ev) ev.push({ t: 'die' });
+      return;
     }
+    if (dry) return;
 
     for (const c of L.crystals) {
-      if (!c.active) { if (--c.t <= 0) c.active = true; continue; }
-      if (p.ammo < C.AMMO && overlap(p.x, p.y, C.PW, C.PH, c.x - 4, c.y - 4, 8, 8)) {
+      if (c.active && p.ammo < C.AMMO && overlap(p.x, p.y, C.PW, C.PH, c.x - 4, c.y - 4, 8, 8)) {
         c.active = false; c.t = C.CRYSTAL_RESPAWN; p.ammo = C.AMMO;
         if (ev) ev.push({ t: 'crystal', x: c.x, y: c.y });
       }
     }
-
+    L.relics.forEach((r, i) => {
+      if (!r.got && overlap(p.x, p.y, C.PW, C.PH, r.x - 4, r.y - 4, 8, 8)) {
+        r.got = true;
+        if (ev) ev.push({ t: 'relic', i, x: r.x, y: r.y });
+      }
+    });
     if (L.flag && !p.won && overlap(p.x, p.y, C.PW, C.PH, L.flag.x, L.flag.y, 8, 8)) {
       p.won = true;
-      if (ev) ev.push({ t: 'win' });
+      if (ev) ev.push({ t: 'flag' });
+    }
+    if (L.gate && !p.heaven && overlap(p.x, p.y, C.PW, C.PH, L.gate.x, L.gate.y - 8, 8, 16)) {
+      p.heaven = true;
+      if (ev) ev.push({ t: 'heaven' });
     }
   }
 
-  // Hitscan: first solid point along ray from (x,y).
-  function raycast(L, x, y, dx, dy, max) {
-    for (let d = 0; d < max; d += 1) {
-      const px = x + dx * d, py = y + dy * d;
-      if (isSolid(tileAt(L, Math.floor(px / 8), Math.floor(py / 8)))) return { x: px, y: py, hit: true };
-    }
-    return { x: x + dx * max, y: y + dy * max, hit: false };
+  function tickWorld(L) {
+    for (const c of L.crystals) if (!c.active && --c.t <= 0) c.active = true;
   }
 
-  const API = { C, makeLevel, tileAt, isSolid, solidRect, newPlayer, step, raycast };
+  const API = { C, makeLevel, tileAt, isSolid, stopsBullet, solidRect, newPlayer, step, tickWorld, fireBullet, touchingSpikes };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.Phys = API;
 })(typeof window !== 'undefined' ? window : globalThis);
