@@ -73,32 +73,35 @@
     rows.forEach((r, y) => [...r].forEach((ch, x) => { if (map[ch]) { g.fillStyle = map[ch]; g.fillRect(x, y, 1, 1); } }));
     return c;
   }
-  const BODY = ['..yyyy..', '.yyyyyy.', '.oyfkfk.', '.oyffff.', '..cccc..', '.oyyyyo.'];
-  const LEGS = { idle: ['..p..p..', '..n..n..'], air: ['..pppp..', '.n....n.'], slide: ['.pp..pp.', 'nn....nn'] };
-  const HOOD = [['#83769c', '#5f574f'], ['#ffa300', '#ab5236'], ['#ffec27', '#ffa300']];
-  const PSPR = HOOD.map(([y, o]) => {
+  // Player: an original hooded wanderer. The visor lamp shows ammo (cyan full / amber some / dark none).
+  const BODY = ['..kkkk..', '.kkkkkk.', '.kvvvkk.', '.kssskk.', '.hrrrrh.', '.hcccch.'];
+  const LEGS = { idle: ['..c..c..', '..n..n..'], air: ['..cccc..', '.n....n.'], slide: ['.cc..cc.', 'nn....nn'] };
+  const LAMP = ['#3e434b', '#ffb347', '#8ff8ff'];
+  const PSPR = LAMP.map((v) => {
     const out = {};
-    for (const k in LEGS) out[k] = sprite(BODY.concat(LEGS[k]), { y, o, f: '#ffccaa', k: '#1d2b53', c: '#ff004d', p: '#7e2553', n: '#ab5236' });
+    for (const k in LEGS) out[k] = sprite(BODY.concat(LEGS[k]), { k: '#8a909a', v, s: '#121418', r: '#d0343f', c: '#2a2e36', h: '#5b616d', n: '#1a1d22' });
     return out;
   });
-  const CRYSTAL = sprite(['...w...', '..waa..', '.waaab.', 'waaaabb', '.aaabb.', '..abb..', '...b...'], { w: '#fff1e8', a: '#00e436', b: '#008751' });
-  const CRYSTAL_OFF = sprite(['...d...', '..d.d..', '.d...d.', 'd.....d', '.d...d.', '..d.d..', '...d...'], { d: '#5f574f' });
-  const FEATHER = sprite(['.....w', '....ww', '...wwp', '..wwp.', '.wwp..', '.wp...', 'p.....'], { w: '#fff1e8', p: '#ff77a8' });
+  // energy cell (refill) and record shard (collectible)
+  const CRYSTAL = sprite(['..fff..', '.fwccf.', '.fwccf.', '.fcccf.', '.fcccf.', '.fcccf.', '..fff..'], { f: '#4a5864', w: '#ffffff', c: '#6ff7ff' });
+  const CRYSTAL_OFF = sprite(['..fff..', '.fdddf.', '.fdddf.', '.fdddf.', '.fdddf.', '.fdddf.', '..fff..'], { f: '#343b43', d: '#141a1f' });
+  const FEATHER = sprite(['..w...', '.wmm..', 'wmmmm.', '.mmmmw', '..mmw.', '...w..'], { w: '#ffffff', m: '#ff5d8f' });
   const ITEM_SPR = {
     A: sprite(['.bbbbb.', '.bwbwb.', '.bybyb.', '.bybyb.', 'ooooooo', 'ooooooo', '.o...o.'], { b: '#ffa300', w: '#fff1e8', y: '#ffec27', o: '#83769c' }),
     B: sprite(['..rr...', '.rrrr..', 'rrxrrr.', 'rrrxrr.', '.rxrrr.', '..rrw..', '...w...'], { r: '#ab5236', x: '#1a1020', w: '#ffec27' }),
     K: sprite(['...w...', '..wbw..', '.wbbbw.', '..bbb..', '..bbb..', '..bbb..', '..w.w..'], { w: '#c6ecff', b: '#29adff' }),
     M: sprite(['...r...', '..rrr..', '..rwr..', '..rrr..', '.yyyyy.', '.yyyyy.', '.ooooo.'], { r: '#ff004d', w: '#ff77a8', y: '#ffa300', o: '#ab5236' }),
   };
-  const SIGN = sprite(['........', '.bbbbbb.', '.bllllb.', '.bbbbbb.', '...pp...', '...pp...', '...pp...', '...pp...'], { b: '#ab5236', l: '#ffccaa', p: '#5f574f' });
+  const SIGN = sprite(['.ffffff.', '.fllssf.', '.fssssf.', '.flllsf.', '.ffffff.', '...ff...', '...ff...', '..ffff..'], { f: '#2e3238', s: '#1f1608', l: '#ffb347' }); // wall terminal
 
   // ---------------------------------------------------------------- tile layer (pre-rendered, patched when cracks break)
   const tiles = document.createElement('canvas');
   tiles.width = WW; tiles.height = WH;
   const tg = tiles.getContext('2d');
-  const SPIKE_UP = (x, y) => (y === 5 && (x === 1 || x === 5)) ? '#fff1e8'
-    : (y === 6 && x !== 3 && x !== 7) ? '#c2c3c7' : (y === 7 ? '#83769c' : null);
+  const SPIKE_UP = (x, y) => (y === 5 && (x === 1 || x === 5)) ? '#d8dce2'
+    : (y === 6 && x !== 3 && x !== 7) ? '#8a9099' : (y === 7 ? '#3a3e45' : null);
   const CRACK = ['..#.....', '...#..#.', '...##.#.', '.#...#..', '..#..#..', '.##...#.', '#....#..', '.....#..'];
+  const solidish = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't';
   function drawTile(tx, ty) {
     const bx = tx * 8, by = ty * 8;
     tg.clearRect(bx, by, 8, 8);
@@ -107,78 +110,82 @@
     const at = (dx, dy) => Phys.tileAt(L, tx + dx, ty + dy);
     const same = (dx, dy) => at(dx, dy) === ch;
     if (ch === '#' || ch === '=') {
-      const s = (dx, dy) => { const c = at(dx, dy); return c === '#' || c === '=' || c === 'x' || c === 'm'; };
+      const s = (dx, dy) => solidish(at(dx, dy));
       const T = !s(0, -1), B = !s(0, 1), Lf = !s(-1, 0), R = !s(1, 0);
       const deep = !T && !B && !Lf && !R && s(-1, -1) && s(1, -1) && s(-1, 1) && s(1, 1);
+      const th = hash(tx * 7 + 3, ty * 13 + 1);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        if ((T && Lf && x === 0 && y === 0) || (T && R && x === 7 && y === 0) || (B && Lf && x === 0 && y === 7) || (B && R && x === 7 && y === 7)) continue;
-        const h = hash(bx + x, by + y);
+        const wx = bx + x, wy = by + y, h = hash(wx, wy);
         let col;
-        if (ch === '=') {
-          if (T && y === 0) col = '#fff1e8';
-          else if (B && y === 7) col = '#16609a';
-          else if ((Lf && x === 0) || (R && x === 7)) col = '#c6ecff';
-          else if ((x + y) % 6 === 0 && y < 6) col = '#c6ecff';
-          else col = y < 4 ? '#29adff' : '#1f86c9';
-        } else if (deep) {
-          col = h < 0.1 ? '#26325f' : h < 0.14 ? '#10173a' : '#1a2350';
-        } else {
-          if (T && y === 0) col = '#fff1e8';
-          else if (T && y === 1) col = h < 0.55 ? '#fff1e8' : '#c2c3c7';
-          else if (T && y === 2 && h < 0.18) col = '#c2c3c7';
-          else if ((Lf && x === 0) || (R && x === 7)) col = '#83769c';
-          else if (B && y === 7) col = '#3b4a7a';
-          else if ((Lf && x === 1) || (R && x === 6) || (B && y === 6) || (T && y <= 3)) col = '#2b3a6b';
-          else col = h < 0.07 ? '#2b3a6b' : h > 0.975 ? '#7e2553' : '#1d2b53';
+        if (ch === '=') { // slick coolant-coated steel
+          if (T && y === 0) col = '#c8d8e2';
+          else if (B && y === 7) col = '#26323a';
+          else if ((Lf && x === 0) || (R && x === 7)) col = '#7d93a2';
+          else if ((x + y) % 7 === 0) col = '#7d93a2';
+          else col = y < 3 ? '#56697a' : '#44545f';
+        } else if (deep) { // the endless mass of the structure
+          if (wx % 32 === 0 || wy % 32 === 0) col = '#17191e';
+          else if (wx % 32 === 16 && wy % 4 === 0) col = '#1b1d22';
+          else col = h > 0.9985 ? '#ffb347' : h > 0.996 ? '#4a6b72' : '#22252b';
+        } else { // concrete / steel panels with seams and rivets
+          if (T && y === 0) col = '#a3a9b1';
+          else if (T && y === 1) col = '#6f757e';
+          else if (B && y === 7) col = '#1b1d22';
+          else if ((Lf && x === 0) || (R && x === 7)) col = '#565c66';
+          else if (wx % 16 === 0 || wy % 16 === 0) col = '#2a2e35';
+          else if (wx % 16 === 2 && wy % 16 === 2) col = '#737a84';
+          else if (th > 0.85 && y >= 3 && y <= 5 && x >= 2 && x <= 5) col = (x % 2) ? '#1c1f24' : '#30343b'; // vent
+          else col = h < 0.025 ? '#4d3b33' : h < 0.06 ? '#343840' : '#3c4149';
         }
         px(x, y, col);
       }
-    } else if (ch === 'x') {
+    } else if (ch === 'x') { // corroded concrete
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const edge = x === 0 || y === 0 || x === 7 || y === 7;
-        px(x, y, CRACK[y][x] === '#' ? '#1a1020' : edge ? '#ab5236' : (hash(bx + x, by + y) < 0.2 ? '#8a4a3a' : '#6b3a3a'));
+        px(x, y, CRACK[y][x] === '#' ? '#0f0c0b' : edge ? '#6e5a4d' : (hash(bx + x, by + y) < 0.25 ? '#5a473c' : '#4a3a31'));
       }
-    } else if (ch === 'm') {
+    } else if (ch === 'm') { // polished steel (bullets bounce)
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        let col = '#c2c3c7';
-        if (y === 0 && !same(0, -1)) col = '#fff1e8';
-        else if (y === 7 && !same(0, 1)) col = '#5f574f';
-        else if ((x === 0 && !same(-1, 0)) || (x === 7 && !same(1, 0))) col = '#83769c';
-        else if ((x === 2 || x === 5) && y === 3) col = '#83769c';
-        else if (x + y === 9 || x + y === 10) col = '#e6e7ea';
+        let col = '#a9b0b8';
+        if (y === 0 && !same(0, -1)) col = '#eef1f4';
+        else if (y === 7 && !same(0, 1)) col = '#4d535b';
+        else if ((x === 0 && !same(-1, 0)) || (x === 7 && !same(1, 0))) col = '#737a84';
+        else if (x + y === 9 || x + y === 10) col = '#d4dae0';
         px(x, y, col);
       }
-    } else if (ch === 'g') {
-      tg.fillStyle = 'rgba(41,173,255,0.22)'; tg.fillRect(bx, by, 8, 8);
+    } else if (ch === 'g') { // hardened glass
+      tg.fillStyle = 'rgba(111,247,255,0.12)'; tg.fillRect(bx, by, 8, 8);
       for (let i = 0; i < 8; i++) {
-        if (!same(0, -1)) px(i, 0, '#c6ecff');
-        if (!same(0, 1)) px(i, 7, '#6fb8e8');
-        if (!same(-1, 0)) px(0, i, '#c6ecff');
-        if (!same(1, 0)) px(7, i, '#6fb8e8');
+        if (!same(0, -1)) px(i, 0, '#8ff8ff');
+        if (!same(0, 1)) px(i, 7, '#3d8f99');
+        if (!same(-1, 0)) px(0, i, '#8ff8ff');
+        if (!same(1, 0)) px(7, i, '#3d8f99');
       }
-      px(2, 2, '#fff1e8'); px(3, 1, '#fff1e8'); px(5, 5, '#c6ecff');
-    } else if (ch === 'c') {
+      px(2, 2, '#ffffff'); px(3, 1, '#c8fbff');
+    } else if (ch === 'c') { // floating girder fragment
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        const lc = !same(-1, 0), rc = !same(1, 0);
-        if ((lc && x === 0 && (y < 2 || y > 5)) || (rc && x === 7 && (y < 2 || y > 5))) continue;
-        px(x, y, y > 4 ? '#ffccaa' : y === 0 ? '#ffffff' : '#fff1e8');
-      }
-    } else if (ch === 'd') {
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        let col = (x % 3 === 1) ? '#7e2553' : '#ff004d';
-        if (y === 0 && !same(0, -1)) col = '#ff77a8';
-        if (y === 7 && !same(0, 1)) col = '#7e2553';
+        if (y > 5) continue;
+        let col = y === 0 ? '#9aa0a8' : y === 5 ? '#1b1d22' : '#3a3f47';
+        if ((y === 2 || y === 3) && x % 4 === 1) col = '#101216';
         px(x, y, col);
       }
-    } else if (ch === 'T' || ch === 't') {
+    } else if (ch === 'd') { // blast shutter with hazard stripes
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        let col = ((bx + x + by + y) % 6 < 3) ? '#d8a800' : '#15161a';
+        if (y === 0 && !same(0, -1)) col = '#e6e8ea';
+        if (y === 7 && !same(0, 1)) col = '#2a2d33';
+        if ((x === 0 && !same(-1, 0)) || (x === 7 && !same(1, 0))) col = '#3a3e45';
+        px(x, y, col);
+      }
+    } else if (ch === 'T' || ch === 't') { // sensor eye
       const hit = ch === 't';
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const r = Math.hypot(x - 3.5, y - 3.5);
         const ring = r < 1.5 ? 0 : r < 2.6 ? 1 : r < 3.8 ? 2 : 3;
-        const col = hit ? ['#5f574f', '#83769c', '#5f574f', '#1d2b53'][ring] : ['#ff004d', '#fff1e8', '#ff004d', '#7e2553'][ring];
+        const col = hit ? ['#3e434b', '#5b616d', '#2a2d33', '#1b1d22'][ring] : ['#ff3040', '#ffd6d9', '#7a1420', '#2a2d33'][ring];
         px(x, y, col);
       }
-    } else if ('^v<>'.includes(ch)) {
+    } else if ('^v<>'.includes(ch)) { // jagged shards
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const col = ch === '^' ? SPIKE_UP(x, y) : ch === 'v' ? SPIKE_UP(x, 7 - y) : ch === '>' ? SPIKE_UP(y, 7 - x) : SPIKE_UP(7 - y, x);
         if (col) px(x, y, col);
@@ -201,15 +208,57 @@
   }
 
   // ---------------------------------------------------------------- background
-  const stars = [...Array(90)].map(() => ({ x: rnd(0, 400), y: rnd(0, 900), tw: rnd(0, 6.28), b: Math.random() }));
-  const flakes = [...Array(36)].map(() => ({ x: rnd(0, VW), y: rnd(0, 400), sp: rnd(0.15, 0.5), ph: rnd(0, 6.28), big: Math.random() < 0.2 }));
-  const ridge = (x, seed, amp) => Math.abs(Math.sin(x * 0.045 + seed)) * amp + Math.sin(x * 0.13 + seed * 2) * amp * 0.25 + Math.sin(x * 0.31 + seed) * 2;
+  // Two tiling layers of an endless megastructure, drawn once and scrolled with parallax.
+  function makeLayer(w, h, seed, paint) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    let st = seed;
+    const r = () => { st = (st * 1103515245 + 12345) & 0x7fffffff; return st / 0x7fffffff; };
+    paint(c.getContext('2d'), r);
+    return c;
+  }
+  const FAR = makeLayer(192, 384, 7, (g, r) => {
+    for (let i = 0; i < 14; i++) { // colossal shafts and towers
+      const w = 8 + Math.floor(r() * 26), x = Math.floor(r() * 192), top = Math.floor(r() * 120);
+      for (const ox of [x, x - 192]) {
+        g.fillStyle = r() < 0.5 ? '#111318' : '#0e1014'; g.fillRect(ox, top, w, 384);
+        g.fillStyle = '#16191f'; g.fillRect(ox, top, 1, 384);
+        for (let y = top + 4; y < 384; y += 6 + Math.floor(r() * 10)) {
+          if (r() < 0.35) { g.fillStyle = r() < 0.08 ? '#ffb347' : r() < 0.4 ? '#3e6970' : '#1d2228'; g.fillRect(ox + 2 + Math.floor(r() * (w - 4)), y, 1, 1); }
+        }
+      }
+    }
+    for (let i = 0; i < 9; i++) { // cross beams
+      const y = Math.floor(r() * 384), hgt = 2 + Math.floor(r() * 4);
+      g.fillStyle = '#131519'; g.fillRect(0, y, 192, hgt);
+    }
+  });
+  const MID = makeLayer(160, 256, 21, (g, r) => {
+    for (let i = 0; i < 4; i++) { // girders with rivets
+      const y = Math.floor(r() * 256), hgt = 4 + Math.floor(r() * 4);
+      g.fillStyle = '#1b1e24'; g.fillRect(0, y, 160, hgt);
+      g.fillStyle = '#2a2e35'; g.fillRect(0, y, 160, 1);
+      for (let x = 2; x < 160; x += 6) { g.fillStyle = '#30353d'; g.fillRect(x, y + 2, 1, 1); }
+    }
+    for (let i = 0; i < 3; i++) { // pillars
+      const x = Math.floor(r() * 150), w = 4 + Math.floor(r() * 6);
+      g.fillStyle = '#181b20'; g.fillRect(x, 0, w, 256);
+      g.fillStyle = '#23272d'; g.fillRect(x, 0, 1, 256);
+    }
+    for (let i = 0; i < 6; i++) { // hanging cables
+      const x0 = Math.floor(r() * 160), x1 = x0 + 20 + Math.floor(r() * 60), y0 = Math.floor(r() * 256), sag = 8 + r() * 30;
+      g.fillStyle = '#0c0d10';
+      for (let x = x0; x <= x1; x++) { const t = (x - x0) / (x1 - x0); g.fillRect(((x % 160) + 160) % 160, Math.round(y0 + Math.sin(t * Math.PI) * sag) % 256, 1, 1); }
+    }
+  });
+  const dust = [...Array(40)].map(() => ({ x: rnd(0, VW), y: rnd(0, 400), sp: rnd(0.05, 0.25), ph: rnd(0, 6.28), big: Math.random() < 0.15 }));
 
   // ---------------------------------------------------------------- audio
   let actx = null, noiseBuf = null;
   function audioUnlock() {
     if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
     if (actx && actx.state === 'suspended') actx.resume();
+    ambientStart();
   }
   function tone({ f = 440, f2 = null, d = 0.1, type = 'square', v = 0.12, delay = 0 }) {
     if (!actx || !prefs.sound) return;
@@ -232,6 +281,34 @@
     s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.setValueAtTime(fc, t); f.frequency.exponentialRampToValueAtTime(200, t + d);
     g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
     s.connect(f).connect(g).connect(actx.destination); s.start(t); s.stop(t + d);
+  }
+  // low hum of the structure + wind through its shafts
+  let amb = null;
+  function ambientStart() {
+    if (!actx || amb) return;
+    try {
+      const out = actx.createGain(); out.gain.value = 0;
+      const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+      const o1 = actx.createOscillator(), o2 = actx.createOscillator();
+      o1.type = o2.type = 'sawtooth'; o1.frequency.value = 41; o2.frequency.value = 41.6;
+      o1.connect(lp); o2.connect(lp); lp.connect(out);
+      const buf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate), a = buf.getChannelData(0);
+      for (let i = 0; i < a.length; i++) a[i] = Math.random() * 2 - 1;
+      const wind = actx.createBufferSource(); wind.buffer = buf; wind.loop = true;
+      const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 380; bp.Q.value = 0.6;
+      const wg = actx.createGain(); wg.gain.value = 0.5;
+      const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 0.07; lg.gain.value = 160;
+      lfo.connect(lg).connect(bp.frequency);
+      wind.connect(bp).connect(wg).connect(out);
+      out.connect(actx.destination);
+      o1.start(); o2.start(); wind.start(); lfo.start();
+      amb = out;
+    } catch (e) { amb = null; }
+  }
+  function ambientLevel() {
+    if (!amb) return;
+    const v = prefs.sound && state !== 'pause' ? 0.05 : 0;
+    amb.gain.setTargetAtTime(v, actx.currentTime, 0.6);
   }
   const SFX = {
     shot(pow) { noise(0.1 + pow * 0.06, 0.25 + pow * 0.2, 1600 + pow * 1400); tone({ f: 120 + pow * 40, f2: 40, d: 0.12, v: 0.13 }); },
@@ -460,8 +537,8 @@
         for (let i = 0; i < 14; i++) parts.push({ x: bx + rnd(-3, 3), y: by + rnd(-3, 3), vx: rnd(-1.2, 1.2), vy: rnd(-1.8, 0.3), g: 0.12, life: rnd(30, 60), col: ['#ab5236', '#6b3a3a', '#1a1020'][i % 3], collide: true });
         SFX.crumble(); shake = Math.max(shake, 5); later(HAPTIC.crumble);
       } else if (h.t === 'crystal') {
-        burst(h.x, h.y, 12, ['#00e436', '#fff1e8'], 1.4, 0, 16);
-        toast('補給！', h.x, h.y - 8, '#00e436', 50);
+        burst(h.x, h.y, 12, ['#6ff7ff', '#ffffff'], 1.4, 0, 16);
+        toast('補給', h.x, h.y - 8, '#6ff7ff', 50);
         SFX.crystal(); later(HAPTIC.remote);
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
@@ -493,6 +570,7 @@
   }
   function update() {
     tick++;
+    if (tick % 30 === 0) ambientLevel();
     if (state === 'pause' || state === 'title') { cameraFollow(0.05); return; }
     updateFx();
     Phys.tickWorld(L);
@@ -524,11 +602,11 @@
         SFX.die(); shake = 6; HAPTIC.die();
         pendingFire = null;
       } else if (e.t === 'crystal') {
-        burst(e.x, e.y, 10, ['#00e436', '#fff1e8'], 1.2, 0, 16);
+        burst(e.x, e.y, 10, ['#6ff7ff', '#ffffff'], 1.2, 0, 16);
         SFX.crystal(); HAPTIC.crystal();
       } else if (e.t === 'relic') {
         burst(e.x, e.y, 18, ['#fff1e8', '#ff77a8', '#ffec27'], 1.6, 0, 26);
-        toast('羽根 ' + relicCount() + '/' + L.relics.length, e.x, e.y - 8, '#ff77a8', 90);
+        toast('記録片 ' + relicCount() + '/' + L.relics.length, e.x, e.y - 8, '#ff77a8', 90);
         SFX.relic(); HAPTIC.relic(); saveGame();
       } else if (e.t === 'item') {
         burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
@@ -557,48 +635,40 @@
   }
 
   // ---------------------------------------------------------------- render
+  function tileLayer(img, par, alpha) {
+    const ox = -(((cam.x * par) % img.width) + img.width) % img.width;
+    const oy = -(((cam.y * par) % img.height) + img.height) % img.height;
+    ctx.globalAlpha = alpha;
+    for (let y = Math.floor(oy); y < VH; y += img.height) for (let x = Math.floor(ox); x < VW; x += img.width) ctx.drawImage(img, x, y);
+    ctx.globalAlpha = 1;
+  }
   function drawBackground() {
     const alt = clamp((START_FEET - (cam.y + VH / 2)) / (START_FEET - TOP_FEET), 0, 1);
-    const dawn = clamp((alt - 0.72) / 0.28, 0, 1);
+    const out = clamp((alt - 0.8) / 0.2, 0, 1); // light from outside near the very top
     const gr = ctx.createLinearGradient(0, 0, 0, VH);
-    gr.addColorStop(0, mix(mix('#0d1030', '#2a1446', alt), '#7e2553', dawn));
-    gr.addColorStop(1, mix(mix('#1a2150', '#5a2458', alt), '#ffa300', dawn * 0.8));
+    gr.addColorStop(0, mix('#07080b', '#b9c0c4', out));
+    gr.addColorStop(1, mix('#14171c', '#e6dcc4', out));
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, VW, VH);
-    for (const s of stars) {
-      const x = Math.round(((s.x - cam.x * 0.1) % 400 + 400) % 400) - 128;
-      const y = Math.round(((s.y - cam.y * 0.1) % 900 + 900) % 900) - 300;
-      if (x < 0 || x >= VW || y < 0 || y >= VH) continue;
-      const on = Math.sin(tick * 0.03 + s.tw) > -0.2;
-      ctx.fillStyle = s.b > 0.85 && on ? '#fff1e8' : s.b > 0.5 ? '#83769c' : '#3b3f78';
-      ctx.fillRect(x, y, 1, 1);
-    }
-    const climb = WH - VH - cam.y;
-    const layers = [[0.22, 1.3, 46, '#262a5e', '#6a6a9e', 0.2], [0.4, 4.1, 30, '#31265f', '#4a3f7a', 0.35]];
-    for (const [par, seed, amp, col, cap, px] of layers) {
-      const base = VH - 8 + climb * par;
-      if (base - amp - 10 > VH) continue;
-      for (let x = 0; x < VW; x++) {
-        const wx = x + cam.x * px;
-        const top = Math.round(base - ridge(wx, seed, amp));
-        if (top >= VH) continue;
-        ctx.fillStyle = col; ctx.fillRect(x, top, 1, VH - top);
-        if (ridge(wx, seed, amp) > amp * 0.8) { ctx.fillStyle = cap; ctx.fillRect(x, top, 1, 2); }
-      }
-    }
+    tileLayer(FAR, 0.12, 1 - out * 0.7);
+    // fog between the layers
+    const fog = ctx.createLinearGradient(0, 0, 0, VH);
+    fog.addColorStop(0, 'rgba(20,24,30,0)'); fog.addColorStop(0.6, 'rgba(24,28,34,0.35)'); fog.addColorStop(1, 'rgba(30,34,40,0.55)');
+    ctx.fillStyle = fog; ctx.fillRect(0, 0, VW, VH);
+    tileLayer(MID, 0.35, 1 - out * 0.8);
   }
-  function drawSnow() {
+  function drawSnow() { // drifting dust
     const dx = cam.x - cam.px, dy = cam.y - cam.py;
-    for (const f of flakes) {
+    for (const f of dust) {
       f.y += f.sp - dy * 0.4;
-      f.x += Math.sin(tick * 0.02 + f.ph) * 0.25 - dx * 0.4;
+      f.x += Math.sin(tick * 0.01 + f.ph) * 0.15 - dx * 0.4;
       if (f.y > VH) { f.y -= VH + 4; f.x = rnd(0, VW); }
       if (f.y < -4) f.y += VH + 4;
       if (f.x < 0) f.x += VW; if (f.x >= VW) f.x -= VW;
       const wx = Math.floor((f.x + cam.x) / 8), wy = Math.floor((f.y + cam.y) / 8);
-      if (Phys.isSolid(Phys.tileAt(L, wx, wy))) continue; // no snow drawn over rock
-      ctx.fillStyle = f.big ? '#fff1e8' : '#c2c3c7';
-      ctx.fillRect(Math.round(f.x), Math.round(f.y), f.big ? 2 : 1, f.big ? 2 : 1);
+      if (Phys.isSolid(Phys.tileAt(L, wx, wy))) continue;
+      ctx.fillStyle = f.big ? '#8a9099' : '#4d535b';
+      ctx.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
     }
   }
   function dotted(segs, maxLen, col, stepPx, skip = 0) {
@@ -625,7 +695,7 @@
     const blink = Math.floor(tick / 4) % 2 === 0;
     for (const h of bullet.hits) {
       let x = null, y = null, col = null;
-      if (h.t === 'crystal') { x = h.x; y = h.y; col = '#00e436'; }
+      if (h.t === 'crystal') { x = h.x; y = h.y; col = '#6ff7ff'; }
       else if (h.t === 'target') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ff77a8'; }
       else if (h.t === 'break') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ffa300'; }
       if (x === null) continue;
@@ -662,7 +732,7 @@
     ctx.restore();
     const cx = Math.round(p.x + 3), cy = Math.round(p.y + 4);
     for (let d = 2; d <= 7; d++) {
-      ctx.fillStyle = d >= 6 ? '#fff1e8' : '#83769c';
+      ctx.fillStyle = d >= 6 ? '#c8ccd2' : '#5b616d';
       ctx.fillRect(Math.round(cx + aim.x * d), Math.round(cy + aim.y * d), 1, 1);
     }
     // shots left, over the head (always while airborne or aiming)
@@ -794,8 +864,8 @@
     const b = Math.max(2, Math.round(2 * dpr));
     uctx.fillStyle = '#000'; uctx.fillRect(x + b, y + b, w, h);
     uctx.fillStyle = border; uctx.fillRect(x - b, y - b, w + b * 2, h + b * 2);
-    uctx.fillStyle = '#0d1030'; uctx.fillRect(x, y, w, h);
-    uctx.fillStyle = '#fff1e8';
+    uctx.fillStyle = '#0a0c10'; uctx.fillRect(x, y, w, h);
+    uctx.fillStyle = '#cfe9ec';
     uctx.textBaseline = 'top';
     lines.forEach((l, i) => uctx.fillText(l, x + pad, y + pad + i * lh));
     uctx.globalAlpha = 1;
@@ -818,7 +888,7 @@
       signAlpha.set(s, a);
       if (a <= 0) continue;
       const [sx, sy] = toScreen(s.x + 4, s.y - 3);
-      bubble(SIGNS[s.id].split('\n'), sx, sy, a, '#ab5236');
+      bubble(SIGNS[s.id].split('\n'), sx, sy, a, '#3d8f99');
     }
     for (const t of toasts) {
       const [sx, sy] = toScreen(t.x, t.y);
@@ -840,7 +910,7 @@
     $('btnPause').hidden = name !== null;
   }
   const statsHTML = (rows) => rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
-  const baseStats = () => [['タイム', fmtTime(time)], ['ミス', misses + '回'], ['発砲', shots + '発'], ['羽根', relicCount() + ' / ' + L.relics.length]];
+  const baseStats = () => [['タイム', fmtTime(time)], ['ミス', misses + '回'], ['発砲', shots + '発'], ['記録片', relicCount() + ' / ' + L.relics.length]];
   function abilList() {
     const out = ['空中の弾 ' + abil.ammo + '発'];
     if (abil.breaker) out.push('砕岩弾');
@@ -901,7 +971,7 @@
     const first = !summitDone;
     summitDone = true;
     SFX.win(); HAPTIC.summit();
-    burst(L.flag.x + 4, L.flag.y, 40, ['#ffec27', '#ff004d', '#00e436', '#29adff', '#fff1e8'], 2.2, 0.05, 50);
+    burst(L.flag.x + 4, L.flag.y, 40, ['#ff3040', '#ffffff', '#6ff7ff', '#ffb347', '#a3a9b1'], 2.2, 0.05, 50);
     if (!first) return;
     if (!best.summit || time < best.summit) { best.summit = time; store.set(BEST_KEY, best); }
     saveGame();
@@ -913,13 +983,13 @@
   }
   function heaven() {
     SFX.win(); HAPTIC.heaven();
-    burst(L.gate.x + 4, L.gate.y, 60, ['#ffec27', '#fff1e8', '#ff77a8'], 2.5, 0.02, 70);
+    burst(L.gate.x + 4, L.gate.y, 60, ['#ffffff', '#e6dcc4', '#6ff7ff'], 2.5, 0.02, 70);
     if (!best.heaven || time < best.heaven) { best.heaven = time; store.set(BEST_KEY, best); }
     state = 'clearing';
     const rc = relicCount();
     setTimeout(() => {
       $('heavenStats').innerHTML = statsHTML(baseStats());
-      $('heavenHint').textContent = rc < L.relics.length ? '羽根は、まだどこかに隠れている。（' + rc + '/' + L.relics.length + '）' : 'すべての羽根を見つけた。おめでとう！';
+      $('heavenHint').textContent = rc < L.relics.length ? '記録片は、まだどこかに残っている。（' + rc + '/' + L.relics.length + '）' : 'すべての記録片を集めた。';
       store.del(SAVE_KEY);
       state = 'heaven'; show('heaven');
     }, 1500);

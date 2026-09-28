@@ -6,7 +6,7 @@
 
 ```sh
 npm run build   # src/ を 1 ファイルに inline → dist/index.html
-npm run solve   # ソルバーで道具の順に頂上・天国まで到達可能か検証（~3分。--full で羽根の回収も確認）
+npm run solve   # ソルバーで道具の順に頂上・天国まで到達可能か検証（~3分。--full で記録片の回収も確認）
 npm run serve   # dist をローカル配信
 NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表示のスモークテスト
 ```
