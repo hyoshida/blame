@@ -310,7 +310,6 @@
   // ---------------------------------------------------------------- game state
   let state = 'title';
   let p, abil = Phys.newAbil(), time = 0, misses = 0, shots = 0, bestH = 0, summitDone = false, tick = 0;
-  let hintSeen = {};
   let safe = null, deadT = 0;
   const cam = { x: 0, y: 0, px: 0, py: 0 };
   let shake = 0, flash = null;
@@ -331,7 +330,6 @@
   function newGame() {
     resetWorld();
     abil = Phys.newAbil();
-    hintSeen = {};
     placeAt(Math.floor(L.start.x / 8), Math.floor(L.start.y / 8));
     // debug: #row60 starts on the first ledge at/below that row, with every item found below it
     const m = /row(\d+)/.exec(location.hash);
@@ -355,7 +353,6 @@
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
     for (const i of s.items || []) if (L.items[i]) L.items[i].got = true;
     abil = Object.assign(Phys.newAbil(), s.abil || {});
-    hintSeen = s.hints || {};
     const sp = s.safe;
     p = Phys.newPlayer(sp.x, sp.y, abil);
     time = s.time || 0; misses = s.misses || 0; shots = s.shots || 0; bestH = s.bestH || 0;
@@ -366,7 +363,7 @@
   function saveGame() {
     if (!p || state === 'title' || state === 'heaven') return;
     store.set(SAVE_KEY, {
-      safe, time, misses, shots, bestH, summit: summitDone, abil, hints: hintSeen,
+      safe, time, misses, shots, bestH, summit: summitDone, abil,
       cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]),
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
@@ -382,7 +379,10 @@
       parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g, life: life + rnd(0, 8), col: cols[i % cols.length] });
     }
   }
-  function toast(text, wx, wy, col = '#fff1e8', life = 70) { toasts.push({ text, x: wx, y: wy, col, life, max: life }); }
+  function toast(text, wx, wy, col = '#fff1e8', life = 70) {
+    toasts = toasts.filter((t) => t.text !== text); // repeat hits refresh the message instead of stacking it
+    toasts.push({ text, x: wx, y: wy, col, life, max: life });
+  }
   function updateFx() {
     for (const q of parts) {
       q.vy += q.g; q.x += q.vx; q.y += q.vy; q.life--;
@@ -466,8 +466,7 @@
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
         SFX.clank(); later(HAPTIC.clank);
-        const key = h.t;
-        if (!hintSeen[key]) { hintSeen[key] = 1; toast(h.t === 'glass' ? 'ガラスに弾かれた' : 'かたい…いまは壊せない', h.x, h.y - 8, '#c2c3c7', 90); }
+        toast(h.t === 'glass' ? 'ガラスに弾かれた' : 'かたい…いまは壊せない', h.x, h.y - 8, '#c2c3c7', 90);
       } else if (h.t === 'target') {
         const t = L.targets[h.i];
         burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
