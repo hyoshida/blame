@@ -22,8 +22,8 @@
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
     CHARGE_WAIT: 5000, // ms held at full power before charging starts (long enough to never happen by accident)
-    CHARGE_MS: 1200,   // ms of charging (the red ring) until the shot is charged
-    CHARGE_BOOST: 0.3, // extra recoil per extra round spent in a charged shot
+    CHARGE_MS: 2500,   // ms of charging (the red ring) until the shot is charged
+    CHARGE_BOOST: 0.5, // extra recoil per extra round spent in a charged shot
     PLATE_OUT: 2,      // rounds a charged shot needs to shatter armor plates (V)
     CORE_OUT: 3,       // ... and the superstructure's core (with breaker + magnum): the whole magazine at max
     WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
