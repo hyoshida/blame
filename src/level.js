@@ -3,15 +3,18 @@
 // rises at x 120-137, and a hidden sky ("heaven") sits above the summit.
 //
 // Tiles:  # rock   = ice   g glass (bullets pass)   x crack (breaker rounds break it)
-//         m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)   c cloud   d door   T target (shoot: opens nearby doors)
+//         X reinforced crack (breaker + magnum together)   m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)   c cloud   d door   T target (shoot: opens nearby doors)
 //         ^ v < > spikes (touch = miss)
 // Things: o crystal (refill: touch it OR shoot it)   * feather (collectible)
 //         A spare magazine (+1 air shot)   B breaker rounds   K piercing rounds (glass)   M magnum rounds
 //         1-9 sign   F summit flag   H heaven gate   P start
 //
-// Progression: field (0 air shots) -> A -> field gaps -> tower: target door -> B -> crack ceiling
-// -> ice -> A -> tall shaft -> K -> target in a glass box -> caged-crystal garden -> M -> summit
-// -> (cracked ceiling + crystal chain) -> heaven.
+// Progression (item-only route): start with one air shot. The field has no items.
+// Tower: a red sensor opens a side vault with a spare magazine; the crack vault beside it shows a
+// glowing item you cannot reach yet. Higher, a nook in the ice holds breaker rounds -> go back down
+// and break the vault for piercing rounds. The tall shaft needs the extra magazine; the glass-boxed
+// sensor needs piercing rounds; the garden cage too. Magnum rounds carry you to the summit.
+// Breaker + magnum together break reinforced cracks (a vault by the start holds a second magazine).
 (function (root) {
   const W = 140, H = 172;
   const G = [...Array(H)].map(() => Array(W).fill('#'));
@@ -38,7 +41,6 @@
   ground(114, 115, 166);
   put(107, 168, 'o');
   put(86, 161, 'o');
-  put(54, 165, 'A');
   // feathers: one sealed in a floating rock (needs breaker), one on a high sky ledge
   stamp(40, 154, [' ### ', '##*##', ' #x# ']);
   stamp(7, 151, ['.*.', '###']);
@@ -49,6 +51,8 @@
   stamp(107, 152, ['####']); put(108, 151, '*');
   // hidden walkway from R2 up and left to R3 (tells about shooting cells below you)
   stamp(99, 148, ['hhh']); stamp(91, 144, ['hhh']); stamp(83, 140, ['hhh']); stamp(75, 136, ['hhhh']); put(76, 135, '*');
+  // reinforced vault right by the start: seen at once, opened only at the very end (breaker + magnum)
+  stamp(18, 164, ['####', 'X..#', 'X.A#', '####']);
   put(2, 169, 'P');
   put(4, 169, '1');
   put(10, 169, '2');
@@ -79,12 +83,8 @@
     39: '......F.9.........',
     40: '.....#####........',
     // magnum ledge (garden top)
-    62: '.............M....',
-    63: '...........######.',
-    66: '.................m',
-    68: '.................m',
-    69: '.................m',
-    70: '.................m',
+    65: '.............M....',
+    66: '...........######.',
     // caged-crystal garden (needs a remote refill)
     67: '.*................',
     72: '.^^^..............',
@@ -92,17 +92,19 @@
     74: '.gog..............',
     75: '.ggg..............',
     76: '######dddd########',
-    // piercing room: the target sits in a glass box
+    // glass room: the sensor sits in a glass box (needs piercing rounds)
     78: '.............ggg..',
     79: '.............gTg..',
     80: '.............ggg..',
-    82: '.......K..........',
     83: '....##############',
     // tall shaft (needs 3 shots)
     // hidden step: lets someone who knows skip the second magazine
     90: '.......hhh........',
-    96: '..A...............',
     97: '######............',
+    // nook at the top of the ice: breaker rounds (a detour, not on the way up)
+    99: '..............####',
+    100: '................B#',
+    101: '..............####',
     // ice
     102: '....=====.........',
     106: '...........=======',
@@ -112,20 +114,26 @@
     114: '.......======.....',
     118: '===...............',
     122: '..........======..',
-    // cracked ceiling (breaker rounds)
-    127: '######xxxxxx######',
-    130: '..B...............',
+    // cracked ceiling: the way up is on the right; the cracks are only a shortcut
+    127: '######xxxxxx......',
     131: '#####.............',
     133: '......#####.......',
     137: '.............#####',
-    // target + door
-    142: '######dddd########',
+    // lower tower
+    142: '######....########',
     144: 'T.................',
     145: '...............8..',
     146: '.............#####',
     150: '.......######.....',
-    154: '######............',
-    158: '.....######.......',
+    // side vault (right) opened by the red sensor: spare magazine
+    152: '...............###',
+    153: '...............d.#',
+    154: '######.........dA#',
+    // crack vault (left): piercing rounds glow inside, out of reach until you have breaker rounds
+    155: '###............###',
+    156: '..x...............',
+    157: '.Kx...............',
+    158: '###..######.......',
     162: '............######',
     165: '..7...............',
   };
@@ -145,13 +153,13 @@
     '42,155': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
     '8,151': '間を置かずに撃て。\n勢いは、重なる。',
     '121,111': '最上層で、脆い天井を見た。\n隙間から、光が漏れていた。',
-    '121,67': '金属は、弾を返す。\n正面から撃てないものも、ある。',
+    '121,67': '砕岩弾でも崩れない壁がある。\nもっと強い反動と一緒なら、あるいは。',
     '134,26': '外に出た。\nこの記録を読む者が、次の私だ。',
   };
   const SIGNS = {
     1: '指を引いて、放せ。その向きに撃つ。\n反動が、お前を反対へ運ぶ。',
     2: '深く引くほど、遠くへ。\n足もとを撃てば、身体は浮く。',
-    3: '――まだ、宙では撃てない。\n地に足をつけて、次を待て。',
+    3: '宙でも、もう一度だけ撃てる。\n弾は、地に足をつけると満ちる。',
     4: 'この先は、宙で二度目を撃て。\n落ちても、少し戻されるだけだ。',
     5: '青い光に触れれば、弾は満ちる。\n宙にいても。',
     6: '下で光っている。\n…触れずとも、届くものがある。',
@@ -166,7 +174,7 @@
   // relay terminals: touch to activate, then transfer between them from the pause menu. [tile x, tile y, name]
   const WAYPOINTS = [
     [7, 169, '目覚めの床'], [126, 165, '塔の入口'], [121, 126, '砕けた天井'], [124, 96, '冷たい縦穴'],
-    [132, 82, '硝子の間'], [135, 62, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
+    [132, 82, '硝子の間'], [135, 65, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
   ];
   const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS, WAYPOINTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

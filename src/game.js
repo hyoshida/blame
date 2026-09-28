@@ -169,6 +169,15 @@
         if (CRACK[y][x] === '#') col = '#08090b';
         px(x, y, col);
       }
+    } else if (ch === 'X') { // reinforced fractured panel: steel bands over the cracks
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        let col = hash(bx + x, by + y) < 0.3 ? '#50555c' : '#43474e';
+        if (x === 0 || y === 0) col = '#6a7078';
+        if (x === 7 || y === 7) col = '#22252a';
+        if (CRACK[y][x] === '#') col = '#08090b';
+        if (y === 2 || y === 5) col = (x % 3 === 1) ? '#8a9099' : '#5b616d';
+        px(x, y, col);
+      }
     } else if (ch === 'm') { // polished steel (bullets bounce)
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         let col = '#a9b0b8';
@@ -679,7 +688,7 @@
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
         SFX.clank(); later(HAPTIC.clank);
-        toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
+        toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : h.heavy ? (abil.breaker ? '崩れない。…もっと強い一撃なら' : 'びくともしない。…まだ') : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
       } else if (h.t === 'target') {
         const t = L.targets[h.i];
         burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
@@ -1217,7 +1226,7 @@
     $('itemSub').textContent = '――何かを、拾った。';
     $('itemName').textContent = info.name;
     $('itemDesc').textContent = info.desc;
-    $('itemAbil').textContent = abilList();
+    $('itemAbil').textContent = abilList() + ((type === 'B' && abil.magnum) || (type === 'M' && abil.breaker) ? '\n――二つの弾が、噛み合う気がする。' : '');
     saveGame();
     setTimeout(() => { if (state === 'item') show('item'); }, 350);
   }

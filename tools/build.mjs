@@ -5,6 +5,12 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 
 const read = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+{ // a repeated row number in the tower table silently overwrites a row: refuse to build
+  const lv = read('src/level.js'), t = lv.slice(lv.indexOf('const T = {'), lv.indexOf('};', lv.indexOf('const T = {')));
+  const keys = [...t.matchAll(/^\s+(\d+): '/gm)].map((m) => m[1]);
+  const dup = keys.filter((k, i) => keys.indexOf(k) !== i);
+  if (dup.length) { console.error('level.js: duplicate tower rows ' + dup.join(', ')); process.exit(1); }
+}
 const tpl = read('src/index.html');
 let rev = 'dev';
 try { rev = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { /* not a repo */ }

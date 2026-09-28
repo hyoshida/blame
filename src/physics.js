@@ -32,7 +32,7 @@
     K: { name: '貫通弾', desc: 'ガラスの向こうへ、届く。' },
     M: { name: '強装弾', desc: '反動が、身体をもっと遠くへ運ぶ。' },
   };
-  const newAbil = () => ({ ammo: 0, breaker: false, pierce: false, magnum: false });
+  const newAbil = () => ({ ammo: 1, breaker: false, pierce: false, magnum: false }); // start with one air shot
   function grantItem(abil, type) {
     if (type === 'A') abil.ammo = Math.min(C.MAX_AMMO, abil.ammo + 1);
     else if (type === 'B') abil.breaker = true;
@@ -42,9 +42,10 @@
 
   // Tiles: # rock  = ice  g glass  x crack  m metal (always bounces bullets)  c cloud  d door
   //        T target  t target (hit)  h hidden walkway (solid, invisible; bullets pass)  ^v<> spikes
-  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1 };
+  //        X reinforced crack: only breaker rounds fired with magnum recoil break it
+  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1 };
   const isSolid = (c) => SOLID[c] === 1;
-  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't';
+  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't';
 
   function makeLevel(rows) {
     const w = Math.max(...rows.map((r) => r.length));
@@ -199,6 +200,8 @@
           x = nx; y = ny;
           if (c === 'x' && p.abil.breaker) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y }); }
           else if (c === 'x') hits.push({ t: 'clank', x, y, dx, dy });
+          else if (c === 'X' && p.abil.breaker && p.abil.magnum) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y, heavy: true }); }
+          else if (c === 'X') hits.push({ t: 'clank', x, y, dx, dy, heavy: true });
           else if (c === 'T') { const i = L.tmap.get(nty * L.w + ntx); if (!dry) openTarget(L, i); hits.push({ t: 'target', i, tx: ntx, ty: nty, x, y }); }
           else if (c === 'g') hits.push({ t: 'glass', x, y, dx, dy });
           else hits.push({ t: 'wall', x, y, dx, dy });

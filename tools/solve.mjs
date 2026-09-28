@@ -33,6 +33,7 @@ function applyPhaseWorld() {
   for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
     let c = base[y][x];
     if (c === 'x' && abil.breaker) c = '.';
+    if (c === 'X' && abil.breaker && abil.magnum) c = '.';
     L.grid[y][x] = c;
   }
   for (const i of targetsHit) {
@@ -79,7 +80,7 @@ function aimAtTarget(p, s) {
   return null;
 }
 
-let phase = 0, focusRow = L.h;
+let phase = 0, focusRow = L.h, focusRows = null; // focusRows: rows worth re-exploring next phase (null = everything)
 const log = [];
 const found = { summit: false, heaven: false, relics: new Set(), items: new Set(), targets: new Set() };
 let sims = 0;
@@ -179,7 +180,8 @@ for (;;) {
   phase++;
   applyPhaseWorld();
   // later phases: only re-explore around/above where the newest ability or door appeared
-  const queue = [...seen].filter((k) => FULL || phase === 1 || Math.floor(k / L.w) <= focusRow);
+  const near = (row) => focusRows.some((r) => Math.abs(r - row) <= 20);
+  const queue = [...seen].filter((k) => FULL || phase === 1 || !focusRows || Math.floor(k / L.w) <= focusRow || near(Math.floor(k / L.w)));
   const done = new Set();
   while (queue.length) {
     const k = queue.shift();
@@ -193,9 +195,16 @@ for (;;) {
     for (const n of next) if (!seen.has(n)) { seen.add(n); queue.push(n); }
   }
   let changed = false;
-  focusRow = -1;
+  focusRow = -1; focusRows = [];
+  const before = { ...abil };
   for (const i of found.items) if (!itemsGot.has(i)) { focusRow = Math.max(focusRow, (L.items[i].y - 4) / 8 + 16); itemsGot.add(i); Phys.grantItem(abil, L.items[i].type); changed = true; log.push(`phase ${phase}: item ${L.items[i].type} @${(L.items[i].x - 4) / 8},${(L.items[i].y - 4) / 8}`); }
-  for (const i of found.targets) if (!targetsHit.has(i)) { focusRow = Math.max(focusRow, L.targets[i].ty + 16); targetsHit.add(i); changed = true; log.push(`phase ${phase}: target @${L.targets[i].tx},${L.targets[i].ty}`); }
+  for (const i of found.targets) if (!targetsHit.has(i)) { focusRow = Math.max(focusRow, L.targets[i].ty + 16); for (const [, dy] of L.targets[i].doors) focusRows.push(dy); targetsHit.add(i); changed = true; log.push(`phase ${phase}: target @${L.targets[i].tx},${L.targets[i].ty}`); }
+  // new abilities matter wherever their tiles are (this is what makes backtracking visible)
+  const rowsOf = (pred) => { const r = new Set(); base.forEach((row, y) => row.forEach((c) => { if (pred(c)) r.add(y); })); return [...r]; };
+  if (abil.breaker && !before.breaker) focusRows.push(...rowsOf((c) => c === 'x'));
+  if (abil.breaker && abil.magnum && !(before.breaker && before.magnum)) focusRows.push(...rowsOf((c) => c === 'X'));
+  if (abil.pierce && !before.pierce) focusRows.push(...rowsOf((c) => c === 'g' || c === 'T'));
+  if (abil.ammo !== before.ammo || abil.magnum !== before.magnum) focusRows = null; // movement changed: look everywhere
   if (!QUIET) console.error(`phase ${phase}: ${seen.size} surfaces, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   if (!changed) break;
 }
