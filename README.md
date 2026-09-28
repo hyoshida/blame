@@ -6,7 +6,10 @@
 
 ```sh
 npm run build   # src/ を 1 ファイルに inline → dist/index.html
-npm run solve   # ソルバーで道具の順に頂上・天国まで到達可能か検証（~3分。--full で記録片の回収も確認）
+npm run solve   # ソルバーで頂上・天国まで到達可能か検証（~4分）
+                #   --full      記録片の回収も含めて全域を再探索
+                #   --no-blast  壁撃ちを使わない道具だけのルートを検証（CI はこれ）
+                #   --trace x,y 指定タイルの記録片に最初に届いた手順を表示
 npm run serve   # dist をローカル配信
 NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表示のスモークテスト
 ```
@@ -23,7 +26,7 @@ NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表
 ### デバッグ用 URL
 
 - `#row60`: その行付近の足場から開始（それより下の道具と的は取得済み扱い。0 が最上段）
-- `#at52,165`: 指定タイルから開始
+- `#at52,165`: 指定タイルから開始（`#at52,165+AB` のように道具も付与できる）
 
 ## デプロイ
 

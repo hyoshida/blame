@@ -30,6 +30,10 @@
   .overlay::before { content: ''; position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px); }
   .overlay::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.7) 100%); }
   .panel { position: relative; z-index: 1; }
+  .loglist { display: flex; flex-direction: column; gap: 12px; text-align: left; max-height: 55vh; overflow-y: auto; }
+  .log { border-left: 2px solid #ff3fa4; padding: 2px 0 2px 10px; }
+  .logno { font-size: 11px; color: #ff3fa4; letter-spacing: .2em; }
+  .logtext { font-size: 14px; line-height: 1.7; white-space: pre-line; color: #cfd3d8; }
   .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--danger), transparent); border: 0; margin: 0; }
   .logo.heaven { color: #fff8e8; text-shadow: 0 0 12px #e6dcc4, 3px 3px 0 #3d8f99; }
   .sub { margin: 0; color: var(--dim); font-size: 13px; letter-spacing: .2em; }
@@ -84,19 +88,31 @@
       <button class="act" id="btnSound">音　ON</button>
       <button class="act" id="btnHaptics">振動　ON</button>
     </div>
-    <button class="act" id="btnTitle">離れる</button>
+    <div class="row">
+      <button class="act" id="btnLogs">記録</button>
+      <button class="act" id="btnTitle">離れる</button>
+    </div>
     <button class="act primary" id="btnResume">戻る</button>
   </div>
 </div>
 
 <div class="overlay" id="scrItem" hidden>
   <div class="panel">
-    <p class="sub">――何かを、拾った。</p>
+    <p class="sub" id="itemSub">――何かを、拾った。</p>
     <canvas id="itemIcon" width="64" height="64" style="width:96px;height:96px;margin:0 auto;image-rendering:pixelated;border:1px solid #3d8f99;background:#0a0c10"></canvas>
     <h2 class="logo" style="font-size:30px" id="itemName"></h2>
-    <p style="margin:0;font-size:16px;line-height:1.6" id="itemDesc"></p>
+    <p style="margin:0;font-size:16px;line-height:1.7;white-space:pre-line" id="itemDesc"></p>
     <p class="small" id="itemAbil"></p>
     <button class="act primary" id="btnItemOk">受け入れる</button>
+  </div>
+</div>
+
+<div class="overlay" id="scrLogs" hidden>
+  <div class="panel">
+    <h2 class="logo" style="font-size:26px">記録</h2>
+    <hr class="rule">
+    <div id="logList" class="loglist"></div>
+    <button class="act primary" id="btnLogsBack">戻る</button>
   </div>
 </div>
 

@@ -3,7 +3,7 @@
 // rises at x 120-137, and a hidden sky ("heaven") sits above the summit.
 //
 // Tiles:  # rock   = ice   g glass (bullets pass)   x crack (breaker rounds break it)
-//         m metal (bullets bounce)   c cloud   d door   T target (shoot: opens nearby doors)
+//         m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)   c cloud   d door   T target (shoot: opens nearby doors)
 //         ^ v < > spikes (touch = miss)
 // Things: o crystal (refill: touch it OR shoot it)   * feather (collectible)
 //         A spare magazine (+1 air shot)   B breaker rounds   K piercing rounds (glass)   M magnum rounds
@@ -42,6 +42,13 @@
   // feathers: one sealed in a floating rock (needs breaker), one on a high sky ledge
   stamp(40, 154, [' ### ', '##*##', ' #x# ']);
   stamp(7, 151, ['.*.', '###']);
+  // ---- knowledge chain (never explained; the records hint at the next step)
+  // R1: easy ledge right after the first magazine -> tells about wall blasts
+  stamp(52, 160, ['###']); put(53, 159, '*');
+  // R2: high ledge near the tower's outer wall; reachable early only by a wall blast off the scorched wall
+  stamp(107, 152, ['####']); put(108, 151, '*');
+  // hidden walkway from R2 up and left to R3 (tells about shooting cells below you)
+  stamp(99, 148, ['hhh']); stamp(91, 144, ['hhh']); stamp(83, 140, ['hhh']); stamp(75, 136, ['hhh']); put(76, 135, '*');
   put(2, 169, 'P');
   put(4, 169, '1');
   put(10, 169, '2');
@@ -123,6 +130,22 @@
   for (let y = 1; y <= 165; y++) stamp(120, y, [T[y] || '..................']);
 
   const ROWS = G.map((r) => r.join(''));
+  // soot on wall faces where a wall blast is useful: [tile x, tile y, side the soot faces (-1 left, 1 right)]
+  const SCORCH = [];
+  for (let y = 152; y <= 164; y += 3) SCORCH.push([116, y, -1]);   // tower outer wall, field side
+  for (let y = 154; y <= 168; y += 4) SCORCH.push([0, y, 1]);      // world's left edge, by the start
+  for (let y = 44; y <= 60; y += 4) SCORCH.push([138, y, -1]);     // beside the summit climb
+  // record shard logs, keyed by tile "x,y"
+  const RECORDS = {
+    '53,159': '焦げた壁を見たら、銃口を押し当てて撃て。\n反動は、ずっと強くなる。',
+    '108,151': '光の届くあいだだけ、見える道がある。\n暗がりに向けて、撃ってみろ。',
+    '76,135': '青い光は、撃っても満ちる。\n宙に浮かぶ光を、下へ撃て。撃つたび、昇れる。',
+    '42,155': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
+    '8,151': '間を置かずに撃て。\n勢いは、重なる。',
+    '121,111': '最上層で、脆い天井を見た。\n隙間から、光が漏れていた。',
+    '121,67': '金属は、弾を返す。\n正面から撃てないものも、ある。',
+    '134,26': '外に出た。\nこの記録を読む者が、次の私だ。',
+  };
   const SIGNS = {
     1: '指を引いて、放せ。その向きに撃つ。\n反動が、お前を反対へ運ぶ。',
     2: '深く引くほど、遠くへ。\n足もとを撃てば、身体は浮く。',
@@ -134,7 +157,7 @@
     8: '赤い眼が、こちらを見ている。\n閉ざしたのは、あれだ。',
     9: '最上層――のはずだった。\n天井の亀裂から、何かが漏れている。',
   };
-  const API = { ROWS, SIGNS };
+  const API = { ROWS, SIGNS, SCORCH, RECORDS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.LEVEL = API;
 })(typeof window !== 'undefined' ? window : globalThis);

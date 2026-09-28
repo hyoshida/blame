@@ -218,6 +218,28 @@
       if (x >= 0 && y >= 0 && x < L.w && y < L.h) drawTile(x, y);
   }
   for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) drawTile(tx, ty);
+  // soot on a wall face (side -1: the tile's left face, 1: its right face)
+  function bakeScorch(tx, ty, side, seed = 0) {
+    const bx = tx * 8, by = ty * 8;
+    for (let y = -4; y < 12; y++) for (let d = 0; d < 4; d++) {
+      const h = hash(bx * 3 + y + seed, by * 5 + d + seed);
+      const r = Math.hypot(d * 1.6, y - 4) / 7;
+      if (h > 1 - (1 - r) * 0.9) continue;
+      const x = side < 0 ? bx + d : bx + 7 - d;
+      if (!Phys.isSolid(Phys.tileAt(L, Math.floor(x / 8), Math.floor((by + y) / 8)))) continue;
+      tg.fillStyle = r < 0.45 && h < 0.2 ? '#8a3a14' : r < 0.5 ? '#07070a' : '#141417';
+      tg.fillRect(x, by + y, 1, 1);
+    }
+  }
+  for (const [tx, ty, side] of window.LEVEL.SCORCH || []) bakeScorch(tx, ty, side);
+  const HIDDEN = [];
+  for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) if (L.grid[ty][tx] === 'h') HIDDEN.push({ tx, ty, t: 0 });
+  function revealNear(x, y, r, t) {
+    for (const hdn of HIDDEN) {
+      const cx = hdn.tx * 8 + 4, cy = hdn.ty * 8 + 4;
+      if ((cx - x) ** 2 + (cy - y) ** 2 < r * r) hdn.t = Math.max(hdn.t, t);
+    }
+  }
   const origGrid = L.grid.map((r) => r.slice());
   // Auto-placed light fixtures: lamps under overhangs, neon strips on walls. Chosen by hash so they never move.
   const LAMPS = [];
@@ -371,6 +393,7 @@
     crumble() { noise(0.3, 0.45, 900); tone({ f: 70, f2: 40, d: 0.25, type: 'triangle', v: 0.2 }); },
     die() { tone({ f: 520, f2: 90, d: 0.35, type: 'sawtooth', v: 0.08 }); noise(0.2, 0.2, 3000); },
     respawn() { [392, 523].forEach((f, i) => tone({ f, d: 0.08, type: 'triangle', v: 0.08, delay: i * 0.06 })); },
+    blast() { noise(0.35, 0.55, 3800); tone({ f: 70, f2: 30, d: 0.3, type: 'sawtooth', v: 0.16 }); },
     clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
     door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
     item() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.07, delay: i * 0.07 })); },
@@ -427,6 +450,7 @@
     remote: () => Haptics.play([8, 25, 8, 25, 18], 3),
     clank: () => Haptics.play(6, 0),
     crumble: () => Haptics.play([35, 25, 20], 2),
+    blast: () => Haptics.play([45, 20, 25], 2),
     target: () => Haptics.play([15, 50, 40], 2),
     die: () => Haptics.play([50, 30, 20], 2),
     respawn: () => Haptics.play(8, 1),
@@ -444,6 +468,7 @@
   let shake = 0, flash = null;
   let parts = [], tracers = [], toasts = [], ghosts = [];
   let scarf = [];
+  let relicOrder = []; // record shards in the order they were found
   let aim = { x: 0.7, y: 0.7 }, pow = 1;
   let stick = null; // {id, ox, oy, x, y}
   let pendingFire = null;
@@ -485,18 +510,24 @@
       L.targets.forEach((t, i) => { if (t.ty > row) Phys.openTarget(L, i); });
       outer: for (let ty = row; ty < L.h; ty++) for (let tx = L.w - 1; tx >= 0; tx--) if (surfaceAt(tx, ty)) { placeAt(tx, ty); break outer; }
     }
-    const at = /at(\d+),(\d+)/.exec(location.hash); // debug: #at52,165 starts on that exact tile
-    if (at) placeAt(+at[1], +at[2]);
+    const at = /at(\d+),(\d+)(?:\+([ABKM]+))?/.exec(location.hash); // debug: #at52,165 starts on that tile; +AB grants items
+    if (at) {
+      L.items.forEach((it) => { if (!it.got && (it.y / 8 > +at[2] + 1 || (at[3] || '').includes(it.type))) { it.got = true; Phys.grantItem(abil, it.type); } });
+      L.targets.forEach((t, i) => { if (t.ty > +at[2] + 1) Phys.openTarget(L, i); });
+      placeAt(+at[1], +at[2]);
+    }
     time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false;
     safe = { x: p.x, y: p.y }; deadT = 0;
     parts = []; tracers = []; toasts = [];
-    snapCam(); resetScarf(); ghosts = [];
+    snapCam(); resetScarf(); ghosts = []; relicOrder = [];
+    for (const hdn of HIDDEN) hdn.t = 0;
   }
   function loadGame(s) {
     newGame();
     for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && L.grid[ty][tx] === 'x') Phys.setTile(L, tx, ty, '.');
     for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
+    relicOrder = (s.relicOrder || s.relics || []).filter((i) => L.relics[i]);
     for (const i of s.items || []) if (L.items[i]) L.items[i].got = true;
     abil = Object.assign(Phys.newAbil(), s.abil || {});
     const sp = s.safe;
@@ -513,7 +544,7 @@
       cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]),
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
-      relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0),
+      relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0), relicOrder,
     });
   }
   const relicCount = () => L.relics.filter((r) => r.got).length;
@@ -531,6 +562,8 @@
   }
   function updateFx() {
     ghosts = ghosts.filter((g) => --g.life > 0);
+    for (const hdn of HIDDEN) if (hdn.t > 0) hdn.t--;
+    if (p && !p.dead && p.grounded && Phys.tileAt(L, Math.floor((p.x + 3) / 8), Math.floor((p.y + C.PH + 1) / 8)) === 'h') revealNear(p.x + 3, p.y + C.PH + 4, 10, 24);
     if (tick % 12 === 0 && CRACKS.length) { // loose grit trickles from fractured panels
       const [tx, ty] = CRACKS[Math.floor(Math.random() * CRACKS.length)];
       if (L.grid[ty][tx] === 'x' && Math.abs(tx * 8 - cam.x - VW / 2) < VW && Math.abs(ty * 8 - cam.y - VH / 2) < VH)
@@ -603,7 +636,20 @@
     const d0 = Math.hypot(s0.x1 - s0.x0, s0.y1 - s0.y0);
     const mz = Math.min(7, d0);
     tracers.push({ segs: e.segs, skip: mz, life: 6 });
-    flash = { x: cx + e.dx * mz, y: cy + e.dy * mz, life: 3 };
+    flash = { x: cx + e.dx * mz, y: cy + e.dy * mz, life: e.blast ? 6 : 3, big: e.blast };
+    // the flash lights up hidden walkways for a moment
+    revealNear(flash.x, flash.y, e.blast ? 80 : 64, 70);
+    for (const sg of e.segs) {
+      const d = Math.hypot(sg.x1 - sg.x0, sg.y1 - sg.y0);
+      for (let i = 0; i <= d; i += 8) revealNear(sg.x0 + (sg.x1 - sg.x0) * i / d, sg.y0 + (sg.y1 - sg.y0) * i / d, 16, 60);
+    }
+    if (e.blast) { // pressed against the wall: louder, brighter, leaves soot
+      const w = e.hits.find((h) => h.t === 'wall' || h.t === 'clank');
+      if (w) bakeScorch(Math.floor((w.x + w.dx) / 8), Math.floor(w.y / 8), w.dx > 0 ? -1 : 1, tick);
+      burst(flash.x, flash.y, 16, ['#ffb347', '#ffffff', '#ff5a1e'], 2.2, 0.04, 18);
+      SFX.blast(); later(HAPTIC.blast);
+      shake = Math.max(shake, 7);
+    }
     for (const h of e.hits) {
       if (h.t === 'wall') for (let i = 0; i < 6; i++) parts.push({ x: h.x - h.dx * 2, y: h.y - h.dy * 2, vx: -h.dx * rnd(0.3, 1.5) + rnd(-0.8, 0.8), vy: -h.dy * rnd(0.3, 1.5) + rnd(-0.8, 0.8), g: 0.08, life: rnd(8, 16), col: i % 2 ? '#ffec27' : '#fff1e8' });
       else if (h.t === 'ping') { burst(h.x, h.y, 4, ['#fff1e8', '#c2c3c7'], 0.8, 0, 8); SFX.ping(); }
@@ -686,8 +732,9 @@
         SFX.crystal(); HAPTIC.crystal();
       } else if (e.t === 'relic') {
         burst(e.x, e.y, 18, ['#fff1e8', '#ff77a8', '#ffec27'], 1.6, 0, 26);
-        toast('記録片 ' + relicCount() + '/' + L.relics.length + '　…誰の記録だ', e.x, e.y - 8, '#ff3fa4', 100);
-        SFX.relic(); HAPTIC.relic(); saveGame();
+        relicOrder.push(e.i);
+        SFX.relic(); HAPTIC.relic();
+        showRecord(e.i);
       } else if (e.t === 'item') {
         burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
         SFX.item(); HAPTIC.item();
@@ -910,6 +957,19 @@
   }
   // drawn after the darkness: things that are themselves light
   function drawWorldFX() {
+    for (const hdn of HIDDEN) {
+      if (hdn.t <= 0) continue;
+      const a = Math.min(1, hdn.t / 30), x = hdn.tx * 8, y = hdn.ty * 8;
+      const same = (dx) => Phys.tileAt(L, hdn.tx + dx, hdn.ty) === 'h';
+      ctx.globalAlpha = a * 0.9;
+      ctx.fillStyle = '#8ff8ff'; ctx.fillRect(x, y, 8, 1);
+      ctx.globalAlpha = a * 0.35;
+      ctx.fillStyle = '#3fd8ff';
+      for (let i = 0; i < 8; i += 2) ctx.fillRect(x + i, y + 2 + (i % 4 ? 1 : 0), 1, 1);
+      if (!same(-1)) ctx.fillRect(x, y, 1, 5);
+      if (!same(1)) ctx.fillRect(x + 7, y, 1, 5);
+      ctx.globalAlpha = 1;
+    }
     for (const t of tracers) dotted(t.segs, 999, t.life > 4 ? '#ffffff' : t.life > 2 ? '#8ff8ff' : '#3fd8ff', 1, t.skip);
     if (flash) {
       ctx.fillStyle = '#8ff8ff'; ctx.fillRect(Math.round(flash.x) - 1, Math.round(flash.y) - 1, 3, 3);
@@ -929,7 +989,7 @@
     const out = [];
     const add = (x, y, r, a, col) => { if (Math.abs(x - cam.x - VW / 2) < VW / 2 + r && Math.abs(y - cam.y - VH / 2) < VH / 2 + r) out.push({ x, y, r, a, col }); };
     if (p && !p.dead) add(p.x + 3, p.y + 1, 38, 0.9, LAMP[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1]);
-    if (flash) add(flash.x, flash.y, 60, 1, '#8ff8ff');
+    if (flash) add(flash.x, flash.y, flash.big ? 90 : 60, 1, flash.big ? '#ffb347' : '#8ff8ff');
     for (const t of tracers) { const s = t.segs[t.segs.length - 1]; add(s.x1, s.y1, 16, t.life / 6, '#8ff8ff'); }
     for (const l of LAMPS) if (lampOn(l)) add(l.x, l.y + (l.kind === 'hang' ? 4 : l.kind === 'post' ? -6 : 3), l.r, 0.85, l.col);
     for (const c of L.crystals) if (c.active) add(c.x, c.y, 20, 0.8, '#6ff7ff');
@@ -1092,7 +1152,7 @@
   }
 
   // ---------------------------------------------------------------- screens
-  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem') };
+  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs') };
   function show(name) {
     for (const k in scr) scr[k].hidden = k !== name;
     $('btnPause').hidden = name !== null;
@@ -1112,11 +1172,37 @@
     const c = $('itemIcon'); const g = c.getContext('2d');
     g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
     g.drawImage(ITEM_SPR[type], 0, 0, 7, 7, 4, 4, 56, 56);
+    $('itemSub').textContent = '――何かを、拾った。';
     $('itemName').textContent = info.name;
     $('itemDesc').textContent = info.desc;
     $('itemAbil').textContent = abilList();
     saveGame();
     setTimeout(() => { if (state === 'item') show('item'); }, 350);
+  }
+  const recordText = (i) => (window.LEVEL.RECORDS || {})[((L.relics[i].x - 4) / 8) + ',' + ((L.relics[i].y - 4) / 8)] || '……';
+  function showRecord(i) {
+    state = 'item'; stick = null; pendingFire = null;
+    const c = $('itemIcon'); const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(FEATHER, 0, 0, 6, 6, 8, 8, 48, 48);
+    $('itemSub').textContent = '――記録片が、再生された。';
+    $('itemName').textContent = '記録 ' + String(relicOrder.length).padStart(2, '0') + ' / ' + String(L.relics.length).padStart(2, '0');
+    $('itemDesc').textContent = recordText(i);
+    $('itemAbil').textContent = '記録は「静止」から読み返せる。';
+    saveGame();
+    setTimeout(() => { if (state === 'item') show('item'); }, 300);
+  }
+  function showLogs() {
+    const list = $('logList');
+    list.innerHTML = '';
+    if (!relicOrder.length) { list.innerHTML = '<p class="small">まだ、何も拾っていない。</p>'; }
+    relicOrder.forEach((i, n) => {
+      const d = document.createElement('div'); d.className = 'log';
+      const h = document.createElement('div'); h.className = 'logno'; h.textContent = '記録 ' + String(n + 1).padStart(2, '0');
+      const t = document.createElement('div'); t.className = 'logtext'; t.textContent = recordText(i);
+      d.appendChild(h); d.appendChild(t); list.appendChild(d);
+    });
+    show('logs');
   }
   let newArmed = false;
   function refreshTitle() {
@@ -1184,6 +1270,8 @@
   }
   $('btnPause').addEventListener('click', pause);
   $('btnItemOk').addEventListener('click', play);
+  $('btnLogs').addEventListener('click', showLogs);
+  $('btnLogsBack').addEventListener('click', () => show('pause'));
   $('btnResume').addEventListener('click', resume);
   $('btnTitle').addEventListener('click', toTitle);
   $('btnClearTitle').addEventListener('click', toTitle);

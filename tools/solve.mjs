@@ -4,7 +4,7 @@
 // and targets hit in one phase become abilities / open doors for the next, until
 // nothing new is found. With breaker rounds, cracks count as already broken.
 // Exits 1 if the summit flag or the heaven gate cannot be reached.
-// Usage: node tools/solve.mjs [--samples 1] [--seed N] [--quiet]
+// Usage: node tools/solve.mjs [--samples 1] [--seed N] [--quiet] [--full] [--no-blast]
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const Phys = require('../src/physics.js');
@@ -14,7 +14,9 @@ const { C } = Phys;
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? +process.argv[i + 1] : d; };
 const MUL = arg('--samples', 1);
 const QUIET = process.argv.includes('--quiet');
-const FULL = process.argv.includes('--full'); // re-explore everything each phase (checks backtracking feathers)
+const FULL = process.argv.includes('--full');
+const TRACE = (() => { const i = process.argv.indexOf('--trace'); return i > 0 ? process.argv[i + 1] : null; })(); // e.g. --trace 108,151
+if (process.argv.includes('--no-blast')) C.BLAST = 1; // check the item-only route (player never discovers wall blasts) // re-explore everything each phase (checks backtracking feathers)
 let seed = arg('--seed', 12345);
 const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const dir = (a) => ({ dx: Math.cos(a), dy: Math.sin(a) });
@@ -99,6 +101,7 @@ function sim(tx, ty, shots) {
     for (const e of ev) {
       if (e.t === 'flag') { if (!found.summit) log.push(`phase ${phase}: SUMMIT`); found.summit = true; }
       else if (e.t === 'heaven') { if (!found.heaven) log.push(`phase ${phase}: HEAVEN`); found.heaven = true; }
+      else if (e.t === 'relic' && TRACE && `${(L.relics[e.i].x - 4) / 8},${(L.relics[e.i].y - 4) / 8}` === TRACE && !found.relics.has(e.i)) console.log('TRACE', { from: [tx, ty], frame: f, shots: JSON.stringify(shots.map((q) => q.aim ? q : { t: q.t, dx: +q.dx.toFixed(2), dy: +q.dy.toFixed(2), pow: +q.pow.toFixed(2) })) });
       else if (e.t === 'relic' && !found.relics.has(e.i)) { log.push(`phase ${phase}: feather @${(L.relics[e.i].x - 4) / 8},${(L.relics[e.i].y - 4) / 8}`); found.relics.add(e.i); }
       else if (e.t === 'relic') found.relics.add(e.i);
       else if (e.t === 'item') found.items.add(e.i);
@@ -147,6 +150,18 @@ function plans(tx, ty) {
       if (rnd() < 0.4) plan.push({ t: t4 + 6 + Math.floor(rnd() * 16), aim: 'crystal', pow: rPow() }, { t: t4 + 20 + Math.floor(rnd() * 16), ...dir(rDown()), pow: rPow() });
       if (rnd() < 0.3) plan.splice(1, 0, { t: Math.max(1, t2 - 3 - Math.floor(rnd() * 8)), ...dir(rDown()), pow: rPow() });
       plan.sort((a, b) => a.t - b.t);
+      out.push(plan);
+    }
+  }
+  // wall-blast template: hop, then shoot steeply into a nearby wall to kick off it
+  for (const side of [-1, 1]) {
+    let near = false;
+    for (let d = 1; d <= 3 && !near; d++) for (let r = 0; r <= 4; r++) if (Phys.isSolid(Phys.tileAt(L, tx + side * d, ty - r))) { near = true; break; }
+    if (!near) continue;
+    for (let i = 0; i < 600 * MUL; i++) {
+      const t2 = 6 + Math.floor(rnd() * 24), a = 0.1 + rnd() * 3.5;
+      const plan = [{ t: 0, ...dir(Math.atan2(1, side * rnd() * 0.4)), pow: rPow() }, { t: t2, ...dir(Math.atan2(a, side)), pow: rnd() < 0.6 ? 1 : rPow() }];
+      if (ammo >= 3 || rnd() < 0.5) plan.push({ t: t2 + 8 + Math.floor(rnd() * 20), ...dir(rAng()), pow: rPow() });
       out.push(plan);
     }
   }

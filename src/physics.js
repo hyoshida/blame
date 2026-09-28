@@ -21,6 +21,8 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
+    BLAST: 1.45,       // recoil multiplier when the muzzle is pressed against a wall (never explained in-game)
+    BLAST_DIST: 12,    // px along the shot from the player's centre to the wall face
   };
 
   // Ability items:  A +1 air shot   B breaker rounds (cracks)   K piercing rounds (glass)   M magnum (stronger recoil)
@@ -39,8 +41,8 @@
   }
 
   // Tiles: # rock  = ice  g glass  x crack  m metal (always bounces bullets)  c cloud  d door
-  //        T target  t target (hit)  ^v<> spikes
-  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, m: 1, c: 1, d: 1, T: 1, t: 1 };
+  //        T target  t target (hit)  h hidden walkway (solid, invisible; bullets pass)  ^v<> spikes
+  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1 };
   const isSolid = (c) => SOLID[c] === 1;
   const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't';
 
@@ -166,7 +168,8 @@
   function fireBullet(L, p, dx, dy, dry) {
     let x = p.x + C.PW / 2, y = p.y + 4;
     let tx = Math.floor(x / 8), ty = Math.floor(y / 8);
-    let sx = x, sy = y, dist = 0, bounces = 0;
+    const cty = ty;
+    let sx = x, sy = y, dist = 0, bounces = 0, blast = false;
     const segs = [], hits = [];
     const STEP = 0.5;
     const seenCrystal = new Set();
@@ -191,6 +194,8 @@
           continue;
         }
         if (stopsBullet(c) || (c === 'g' && !p.abil.pierce)) {
+          // wall blast: the shot hits the wall right beside the player (a vertical face, close in)
+          if (bounces === 0 && ntx !== tx && dist <= C.BLAST_DIST && c !== 'g' && isSolid(tileAt(L, ntx, cty))) blast = true;
           x = nx; y = ny;
           if (c === 'x' && p.abil.breaker) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y }); }
           else if (c === 'x') hits.push({ t: 'clank', x, y, dx, dy });
@@ -213,7 +218,7 @@
       }
     }
     segs.push({ x0: sx, y0: sy, x1: x, y1: y });
-    return { segs, hits };
+    return { segs, hits, blast };
   }
 
   // inp: { fire: null | {dx, dy, pow} }   dry: preview simulation, no world side effects
@@ -225,14 +230,14 @@
 
     if (inp && inp.fire && p.cd <= 0 && p.ammo > 0) {
       const { dx, dy } = inp.fire;
-      const k = (p.abil.magnum ? C.RECOIL_MAG : C.RECOIL) * (inp.fire.pow == null ? 1 : inp.fire.pow);
-      p.vx = -dx * k + p.vx * C.KEEP;
-      p.vy = -dy * k + p.vy * C.KEEP;
       p.ammo--;
       p.cd = C.COOLDOWN;
-      p.grounded = false;
       const b = fireBullet(L, p, dx, dy, dry);
-      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits });
+      const k = (p.abil.magnum ? C.RECOIL_MAG : C.RECOIL) * (inp.fire.pow == null ? 1 : inp.fire.pow) * (b.blast ? C.BLAST : 1);
+      p.vx = -dx * k + p.vx * C.KEEP;
+      p.vy = -dy * k + p.vy * C.KEEP;
+      p.grounded = false;
+      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits, blast: b.blast });
     }
 
     if (p.grounded) {
