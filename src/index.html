@@ -56,6 +56,17 @@
   .stats dt { color: var(--dim); }
   .stats dd { margin: 0; text-align: right; }
   .small { font-size: 12px; color: var(--dim); margin: 0; line-height: 1.6; }
+  .dbg .panel { max-width: 400px; gap: 10px; }
+  .dbg h3 { margin: 4px 0 0; font-size: 12px; font-weight: normal; color: #ffb347; letter-spacing: .2em; text-align: left; }
+  .dbg .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .dbg .grid.g3 { grid-template-columns: repeat(3, 1fr); }
+  .dbg button.act { font-size: 14px; padding: 8px 4px; box-shadow: 2px 2px 0 #000; }
+  .dbg button.act.on { background: #ffb347; color: var(--night); border-color: #ffb347; }
+  .dbg .warplist { max-height: 34vh; }
+  .dbg .coord { display: flex; gap: 6px; align-items: center; }
+  .dbg .coord input { width: 0; flex: 1; font: inherit; font-size: 16px; padding: 8px; background: #0a0c10; color: var(--snow); border: 1px solid #5b616d; }
+  .dbg .coord button { flex: 1.2; }
+  .dbg .tag { font-size: 11px; color: #ffb347; margin-right: 6px; }
   .hint { font-size: 14px; color: var(--sky); margin: 0; line-height: 1.6; }
 </style>
 <!--/HEAD-->
@@ -121,6 +132,30 @@
     <hr class="rule">
     <div id="warpList" class="warplist"></div>
     <button class="act primary" id="btnWarpBack">戻る</button>
+  </div>
+</div>
+
+<div class="overlay dbg" id="scrDebug" hidden>
+  <div class="panel">
+    <h2 class="logo" style="font-size:24px">DEBUG</h2>
+    <p class="small" id="dbgPos"></p>
+    <h3>道具</h3>
+    <div class="grid" id="dbgAmmo"></div>
+    <div class="grid g3" id="dbgFlags"></div>
+    <h3>転移</h3>
+    <div class="coord">
+      <input id="dbgX" type="number" inputmode="numeric" placeholder="x" aria-label="x">
+      <input id="dbgY" type="number" inputmode="numeric" placeholder="y" aria-label="y">
+      <button class="act" id="dbgGo">座標へ</button>
+    </div>
+    <div id="dbgList" class="warplist"></div>
+    <h3>世界</h3>
+    <div class="grid g3">
+      <button class="act" id="dbgRelays">中継点を全起動</button>
+      <button class="act" id="dbgShell">殻を崩す</button>
+      <button class="act" id="dbgRefill">弾を満たす</button>
+    </div>
+    <button class="act primary" id="dbgBack">戻る</button>
   </div>
 </div>
 

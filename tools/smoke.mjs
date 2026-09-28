@@ -68,6 +68,19 @@ await page.screenshot({ path: out + '10b-collapse.png' });
 await start('#at92,7');
 await page.screenshot({ path: out + '11-gate.png' });
 
+// debug menu: pause, three-finger tap, grant everything, jump to the magnum rounds' ledge
+await page.tap('#btnPause');
+await page.waitForTimeout(200);
+await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 150, y: 700, id: 1 }, { x: 200, y: 700, id: 2 }, { x: 250, y: 700, id: 3 }] });
+await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+await page.waitForTimeout(300);
+if (!(await page.isVisible('#scrDebug'))) errors.push('debug menu did not open');
+await page.click('#dbgAmmo button:last-child');
+await page.screenshot({ path: out + '12-debug.png' });
+await page.click('#dbgList button:has-text("強装弾")');
+await page.waitForTimeout(500);
+await page.screenshot({ path: out + '13-debug-warp.png' });
+if (await page.isVisible('#scrItem')) errors.push('debug warp picked up the item');
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');
 await browser.close();
 process.exit(errors.length ? 1 : 0);

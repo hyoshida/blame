@@ -1364,7 +1364,7 @@
   }
 
   // ---------------------------------------------------------------- screens
-  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs'), warp: $('scrWarp') };
+  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs'), warp: $('scrWarp'), debug: $('scrDebug') };
   function show(name) {
     for (const k in scr) scr[k].hidden = k !== name;
     $('btnPause').hidden = name !== null;
@@ -1529,6 +1529,92 @@
     saveGame();
     play();
   }
+  // ---------------------------------------------------------------- debug menu (three-finger tap on the pause screen, or D)
+  // spots worth jumping to: every relay (active or not), every item, and a few landmarks; bottom of the route first
+  const DBG_SPOTS = (() => {
+    const out = WPS.map((w) => ({ tag: '中継', name: w.name, tx: w.tx, ty: w.ty }));
+    const NAMES = { A: '予備弾倉', B: '砕岩弾', K: '貫通弾', M: '強装弾' };
+    for (const it of L.items) out.push({ tag: '道具', name: NAMES[it.type], tx: (it.x - 4) / 8, ty: (it.y - 4) / 8, item: true });
+    out.push({ tag: '要所', name: '最上層の旗', tx: L.flag.x / 8, ty: L.flag.y / 8, item: true });
+    out.push({ tag: '要所', name: '外の門', tx: L.gate.x / 8, ty: L.gate.y / 8, item: true });
+    for (const k of window.LEVEL.RECORD_ORDER) { const [x, y] = k.split(',').map(Number); out.push({ tag: '記録', name: '記録 ' + String(window.LEVEL.RECORD_ORDER.indexOf(k) + 1).padStart(2, '0'), tx: x, ty: y, item: true }); }
+    return out.sort((a, b) => b.ty - a.ty);
+  })();
+  // a standing spot at or below (tx, ty); for pickups, beside them so arriving doesn't take them
+  function dbgSpot(tx, ty, beside) {
+    const ok = (x, y) => x > 0 && x < L.w - 1 && surfaceAt(x, y);
+    for (let dy = 0; dy < 60; dy++) {
+      const y = ty + dy;
+      const xs = beside ? [tx - 2, tx + 2, tx - 1, tx + 1, tx - 3, tx + 3, tx] : [tx, tx - 1, tx + 1, tx - 2, tx + 2];
+      for (const x of xs) if (ok(x, y)) return [x, y];
+    }
+    return null;
+  }
+  function dbgWarp(tx, ty, beside) {
+    const sp = dbgSpot(tx, ty, beside);
+    if (sp) [tx, ty] = sp;
+    p = Phys.newPlayer(tx * 8 + 1, ty * 8 + 8 - C.PH - 0.0001, abil);
+    p.grounded = !!sp;
+    if (sp) safe = { x: p.x, y: p.y };
+    inGate = true; // do not replay the ending on arrival
+    snapCam(); resetScarf(); ghosts = []; pendingFire = null;
+    burst(p.x + 3, p.y + 3, 18, ['#ffb347', '#ffffff'], 1.6, 0, 22);
+    SFX.relay();
+    saveGame(); play();
+  }
+  // item state: the pickups in the world follow what the menu grants (magazines in route order)
+  function dbgSetAbil(next) {
+    Object.assign(abil, next);
+    const mags = L.items.filter((it) => it.type === 'A').sort((a, b) => b.y - a.y);
+    mags.forEach((it, i) => { it.got = i < abil.ammo; });
+    for (const it of L.items) if (it.type !== 'A') it.got = !!abil[{ B: 'breaker', K: 'pierce', M: 'magnum' }[it.type]];
+    if (p) { p.abil = abil; p.ammo = Phys.maxAmmo(p); }
+    saveGame(); renderDebug();
+  }
+  function dbgBtn(label, on, fn) {
+    const b = document.createElement('button');
+    b.className = 'act' + (on ? ' on' : '');
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function renderDebug() {
+    $('dbgPos').textContent = '現在地 ' + Math.floor((p.x + 3) / 8) + ',' + Math.floor((p.y + 4) / 8) + '　高度 ' + heightM() + 'm　' + abilList();
+    const am = $('dbgAmmo'); am.innerHTML = '';
+    for (let n = 0; n <= C.MAX_AMMO - 1; n++) am.appendChild(dbgBtn('弾倉 ' + (n + 1), abil.ammo === n, () => dbgSetAbil({ ammo: n })));
+    am.appendChild(dbgBtn('全部', abil.ammo >= 2 && abil.breaker && abil.pierce && abil.magnum, () => dbgSetAbil({ ammo: 2, breaker: true, pierce: true, magnum: true })));
+    const fl = $('dbgFlags'); fl.innerHTML = '';
+    [['breaker', '砕岩弾'], ['pierce', '貫通弾'], ['magnum', '強装弾']].forEach(([k, n]) => fl.appendChild(dbgBtn(n, abil[k], () => dbgSetAbil({ [k]: !abil[k] }))));
+    $('dbgShell').disabled = L.coreHP <= 0;
+  }
+  function showDebug() {
+    if (state !== 'pause') return;
+    const list = $('dbgList'); list.innerHTML = '';
+    for (const sp of DBG_SPOTS) {
+      const b = document.createElement('button');
+      b.className = 'act warp';
+      b.innerHTML = '<span><span class="tag">' + sp.tag + '</span>' + sp.name + '</span><span class="h">' + sp.tx + ',' + sp.ty + '</span>';
+      b.addEventListener('click', () => dbgWarp(sp.tx, sp.ty, sp.item));
+      list.appendChild(b);
+    }
+    $('dbgX').value = Math.floor((p.x + 3) / 8); $('dbgY').value = Math.floor((p.y + 4) / 8);
+    renderDebug();
+    HAPTIC.target();
+    show('debug');
+  }
+  $('scrPause').addEventListener('touchstart', (e) => { if (e.touches.length >= 3) { e.preventDefault(); showDebug(); } }, { passive: false });
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyD' && state === 'pause' && !scr.pause.hidden) showDebug(); });
+  $('dbgGo').addEventListener('click', () => {
+    const x = Math.round(+$('dbgX').value), y = Math.round(+$('dbgY').value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    dbgWarp(clamp(x, 1, L.w - 2), clamp(y, 0, L.h - 2), false);
+  });
+  $('dbgRelays').addEventListener('click', () => { for (const w of WPS) w.on = true; saveGame(); toastUI('中継点をすべて起動した'); });
+  $('dbgShell').addEventListener('click', () => { if (L.coreHP > 0) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; saveGame(); renderDebug(); toastUI('殻を崩した'); } });
+  $('dbgRefill').addEventListener('click', () => { p.ammo = Phys.maxAmmo(p); toastUI('弾を満たした'); });
+  $('dbgBack').addEventListener('click', () => show('pause'));
+  function toastUI(text) { $('dbgPos').textContent = text; setTimeout(() => { if (!scr.debug.hidden) renderDebug(); }, 1200); }
+
   $('btnWarp').addEventListener('click', showWarp);
   $('btnWarpBack').addEventListener('click', () => show('pause'));
   $('btnResume').addEventListener('click', resume);
