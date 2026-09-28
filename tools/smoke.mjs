@@ -51,6 +51,10 @@ await start('#at128,521');                                      // under the arm
 await drag(200, 520, 200, 300, { hold: 7900, shot: '5b-charging.png' });
 await page.waitForTimeout(500);
 await page.screenshot({ path: out + '5c-plate.png' });
+await start('#at110,433+AB');                                   // wide charged beam through the cracked wall back into the tower
+await drag(150, 520, 330, 520, { hold: 7900 });
+await page.waitForTimeout(80);
+await page.screenshot({ path: out + '5d-beam.png' });
 await start('#row393');                                         // glass hall top: sensor in glass
 await drag(200, 400, 262, 372, { hold: 200, shot: '6-aim-target.png' });
 await start('#row316');

@@ -27,7 +27,7 @@ test(61, 35, full, { dx: 0, dy: -1, pow: 1 }, 'core single:', 'clank');
   for (let i = 0; i < 5; i++) P.step(L, p, null, []);
   const one = P.fireBullet(L, p, 1, 0, true, 1).hits.filter((h) => h.t === 'break').length;
   const three = P.fireBullet(L, p, 1, 0, true, 3).hits.filter((h) => h.t === 'break').length;
-  const ok = one === 1 && three === 4; if (!ok) bad++; console.log(ok ? 'ok  ' : 'FAIL', 'charged shot pierces cracks:', one, 'vs', three); }
+  const ok = one === 1 && three >= 8; if (!ok) bad++; console.log(ok ? 'ok  ' : 'FAIL', 'charged shot pierces cracks:', one, 'vs', three); }
 // after a jump the magazine is not full, but a charge still spends what is left
 { const p = P.newPlayer(0, 0, Object.assign(P.newAbil(), { ammo: 2 })); p.ammo = 2; const ok = P.canCharge(p); p.ammo = 1; const ok0 = !P.canCharge(p); if (!ok || !ok0) bad++; console.log(ok && ok0 ? 'ok  ' : 'FAIL', '2 rounds left can charge, 1 cannot'); }
 process.exit(bad ? 1 : 0);

@@ -804,7 +804,7 @@
     const s0 = e.segs[0];
     const d0 = Math.hypot(s0.x1 - s0.x0, s0.y1 - s0.y0);
     const mz = Math.min(7, d0);
-    if (e.charged) tracers.push({ segs: e.segs, skip: 2, life: isMax(e.out) ? 16 : 10 + e.out * 2, max: isMax(e.out), w: isMax(e.out) ? 5 : 1 + e.out, cols: chargeCols(e.out) });
+    if (e.charged) tracers.push({ segs: e.segs, skip: 2, life: isMax(e.out) ? 16 : 10 + e.out * 2, max: isMax(e.out), w: isMax(e.out) ? 5 : 1 + e.out, r: C.BEAM_R[Math.min(e.out, C.BEAM_R.length - 1)] + (abil.magnum ? 2 : 0), cols: chargeCols(e.out) });
     else tracers.push({ segs: e.segs, skip: mz, life: 6 });
     flash = { x: cx + e.dx * mz, y: cy + e.dy * mz, life: e.blast ? 6 : 3, big: e.blast };
     // the flash lights up hidden walkways for a moment
@@ -834,13 +834,15 @@
       }
       revealNear(cx, cy, 90, 70);
     }
+    let nBreak = 0;
     for (const h of e.hits) {
       if (h.t === 'wall') for (let i = 0; i < 6; i++) parts.push({ x: h.x - h.dx * 2, y: h.y - h.dy * 2, vx: -h.dx * rnd(0.3, 1.5) + rnd(-0.8, 0.8), vy: -h.dy * rnd(0.3, 1.5) + rnd(-0.8, 0.8), g: 0.08, life: rnd(8, 16), col: i % 2 ? '#ffec27' : '#fff1e8' });
       else if (h.t === 'ping') { burst(h.x, h.y, 4, ['#fff1e8', '#c2c3c7'], 0.8, 0, 8); SFX.ping(); }
       else if (h.t === 'break') {
         const bx = h.tx * 8 + 4, by = h.ty * 8 + 4;
         for (let i = 0; i < 14; i++) parts.push({ x: bx + rnd(-3, 3), y: by + rnd(-3, 3), vx: rnd(-1.2, 1.2), vy: rnd(-1.8, 0.3), g: 0.12, life: rnd(30, 60), col: ['#ab5236', '#6b3a3a', '#1a1020'][i % 3], collide: true });
-        SFX.crumble(); shake = Math.max(shake, 5); later(HAPTIC.crumble);
+        if (++nBreak <= 3) { SFX.crumble(); later(HAPTIC.crumble); }
+        shake = Math.max(shake, 5);
       } else if (h.t === 'crystal') {
         burst(h.x, h.y, 12, ['#6ff7ff', '#ffffff'], 1.4, 0, 16);
         toast('充填', h.x, h.y - 8, '#6ff7ff', 50);
@@ -1024,6 +1026,18 @@
       ctx.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
     }
   }
+  // translucent wide band along a path (one stroke, so the alpha doesn't stack)
+  function band(segs, w, col, skip = 0) {
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    segs.forEach((s, i) => {
+      let x0 = s.x0, y0 = s.y0;
+      if (i === 0 && skip) { const d = Math.hypot(s.x1 - s.x0, s.y1 - s.y0) || 1; x0 += (s.x1 - s.x0) * Math.min(1, skip / d); y0 += (s.y1 - s.y0) * Math.min(1, skip / d); }
+      if (i === 0) ctx.moveTo(x0, y0); else ctx.lineTo(x0, y0);
+      ctx.lineTo(s.x1, s.y1);
+    });
+    ctx.stroke();
+  }
   function thickLine(segs, w, col, skip = 0) {
     ctx.fillStyle = col;
     const o = Math.floor(w / 2);
@@ -1055,7 +1069,10 @@
     const charge = chargeLevel() >= 1;
     const bullet = Phys.fireBullet(L, p, v.dx, v.dy, true, charge ? p.ammo : 1);
     ctx.globalAlpha = 0.6;
-    if (charge) { ctx.globalAlpha = Math.floor(tick / 4) % 2 ? 0.75 : 0.5; thickLine(bullet.segs, isMax(p.ammo) ? 3 : 2, chargeCols(p.ammo)[0], 9); }
+    if (charge) {
+      ctx.globalAlpha = 0.14; band(bullet.segs, 2 * (C.BEAM_R[Math.min(p.ammo, C.BEAM_R.length - 1)] + (abil.magnum ? 2 : 0)), chargeCols(p.ammo)[0], 9);
+      ctx.globalAlpha = Math.floor(tick / 4) % 2 ? 0.75 : 0.5; thickLine(bullet.segs, isMax(p.ammo) ? 3 : 2, chargeCols(p.ammo)[0], 9);
+    }
     else dotted(bullet.segs, 72, '#fff1e8', 3, 9);
     ctx.globalAlpha = 1;
     // light up whatever this shot would hit (crystals refill, targets open doors)
@@ -1253,6 +1270,7 @@
       if (!t.w) { dotted(t.segs, 999, t.life > 4 ? '#ffffff' : t.life > 2 ? '#8ff8ff' : '#3fd8ff', 1, t.skip); continue; }
       // charged: a thick red beam that thins out as it fades; hot core from breaker/magnum
       const w = Math.max(1, Math.round(t.w * Math.min(1, t.life / 8)));
+      if (t.r) { ctx.globalAlpha = 0.22 * Math.min(1, t.life / 8); band(t.segs, t.r * 2, t.cols[0], t.skip); ctx.globalAlpha = 1; } // the beam's full breaking width
       if (t.max) { ctx.globalAlpha = 0.35; thickLine(t.segs, w + 4, '#ff004d', t.skip); ctx.globalAlpha = 1; }
       thickLine(t.segs, w, t.cols[0], t.skip);
       if (t.cols.length > 1 && w >= 2) thickLine(t.segs, w - 1 - (w > 3 ? 1 : 0), t.cols[1], t.skip);

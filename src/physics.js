@@ -24,6 +24,7 @@
     CHARGE_WAIT: 5000, // ms held at full power before charging starts (long enough to never happen by accident)
     CHARGE_MS: 2500,   // ms of charging (the red ring) until the shot is charged
     CHARGE_BOOST: 0.5, // extra recoil per extra round spent in a charged shot
+    BEAM_R: [0, 0, 10, 14], // half-width (px) of a charged beam by rounds: what it breaks along its path
     PLATE_OUT: 2,      // rounds a charged shot needs to shatter armor plates (V)
     CORE_OUT: 3,       // ... and the superstructure's core (with breaker + magnum): the whole magazine at max
     WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
@@ -274,7 +275,38 @@
       }
     }
     segs.push({ x0: sx, y0: sy, x1: x, y1: y });
+    if (out >= 2) sweepBeam(L, p, segs, out, hits, gone, dry);
     return { segs, hits, blast };
+  }
+  // a charged shot is a wide beam: it also breaks breakable blocks beside its path
+  function sweepBeam(L, p, segs, out, hits, gone, dry) {
+    const R = C.BEAM_R[Math.min(out, C.BEAM_R.length - 1)] + (p.abil.magnum ? 2 : 0);
+    const can = (c) => (c === 'x' && p.abil.breaker) || (c === 'X' && p.abil.breaker && p.abil.magnum) || c === 'V';
+    for (const s of segs) {
+      const d = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
+      for (let i = 0; i <= d + 2; i += 2) {
+        const px = s.x0 + (s.x1 - s.x0) * Math.min(i, d) / (d || 1), py = s.y0 + (s.y1 - s.y0) * Math.min(i, d) / (d || 1);
+        const tx0 = Math.floor((px - R) / 8), tx1 = Math.floor((px + R) / 8), ty0 = Math.floor((py - R) / 8), ty1 = Math.floor((py + R) / 8);
+        for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+          const k = ty * L.w + tx;
+          if (gone.has(k)) continue;
+          const c = tileAt(L, tx, ty);
+          if (!can(c)) continue;
+          const cx = Math.max(tx * 8, Math.min(px, tx * 8 + 8)), cy = Math.max(ty * 8, Math.min(py, ty * 8 + 8));
+          if ((cx - px) ** 2 + (cy - py) ** 2 > R * R) continue;
+          if (c === 'V') {
+            const tiles = plateCluster(L, tx, ty);
+            for (const [ax, ay] of tiles) gone.add(ay * L.w + ax);
+            if (!dry) for (const [ax, ay] of tiles) setTile(L, ax, ay, '.');
+            hits.push({ t: 'plate', tiles, tx, ty, x: tx * 8 + 4, y: ty * 8 + 4, beam: true });
+          } else {
+            gone.add(k);
+            if (!dry) setTile(L, tx, ty, '.');
+            hits.push({ t: 'break', tx, ty, x: tx * 8 + 4, y: ty * 8 + 4, heavy: c === 'X', beam: true });
+          }
+        }
+      }
+    }
   }
 
   // inp: { fire: null | {dx, dy, pow} }   dry: preview simulation, no world side effects
