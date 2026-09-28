@@ -42,15 +42,17 @@ await page.screenshot({ path: out + '2-start-sign.png' });
 await drag(200, 500, 110, 540, { hold: 200, shot: '3-aiming.png' }); // shoot down-left -> fly right
 await page.waitForTimeout(900);
 await page.screenshot({ path: out + '4-after.png' });
-await start('#row57');
-await drag(200, 400, 170, 470, { hold: 150 });
-await page.waitForTimeout(250);
-await drag(200, 400, 150, 470, { hold: 200, shot: '5-garden-air-aim.png' });
+await start('#at51,165');                                       // next to the first magazine
+await drag(200, 400, 140, 400); // shoot left -> slide right onto the item
 await page.waitForTimeout(1200);
-await start('#row37');
-await page.screenshot({ path: out + '6-summit.png' });
-await start('#row25');
-await page.screenshot({ path: out + '7-heaven.png' });
+await page.screenshot({ path: out + '5-item.png' });
+if (await page.isVisible('#btnItemOk')) await page.tap('#btnItemOk');
+await start('#row81');                                          // piercing rounds room
+await drag(200, 400, 262, 372, { hold: 200, shot: '6-aim-target.png' });
+await start('#row62');
+await page.screenshot({ path: out + '7-magnum.png' });
+await start('#row39');
+await page.screenshot({ path: out + '8-summit.png' });
 
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');
 await browser.close();

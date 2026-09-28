@@ -57,8 +57,8 @@
       <li>画面のどこでも<b>ドラッグして離す</b>と、その向きに撃つ。</li>
       <li>撃つと<b>反対側へ飛ぶ</b>。下に撃てば上へ。</li>
       <li>引っぱる長さで強さが変わる。狙っている間は時間がゆっくりになる。</li>
-      <li>空中で撃てるのは<b>2発</b>。着地か<b style="color:var(--moss)">緑の結晶</b>で回復。</li>
-      <li>トゲに触れるとミス。直前に立っていた足場に戻る。</li>
+      <li>はじめは空中で撃てない。<b>光る道具</b>を拾うと、できることが増える。</li>
+      <li>弾は着地か<b style="color:var(--moss)">緑の結晶</b>で回復。トゲに触れると、直前の足場に戻る。</li>
     </ul>
     <div class="row">
       <button class="act" id="btnNew">はじめから</button>
@@ -72,11 +72,23 @@
   <div class="panel">
     <h2 class="logo" style="font-size:28px">PAUSE</h2>
     <dl class="stats" id="pauseStats"></dl>
+    <p class="small" id="pauseAbil"></p>
     <div class="row">
       <button class="act" id="btnSound">音: ON</button>
       <button class="act" id="btnTitle">タイトルへ</button>
     </div>
     <button class="act primary" id="btnResume">つづける</button>
+  </div>
+</div>
+
+<div class="overlay" id="scrItem" hidden>
+  <div class="panel">
+    <p class="sub">新しい力を手に入れた</p>
+    <canvas id="itemIcon" width="64" height="64" style="width:96px;height:96px;margin:0 auto;image-rendering:pixelated;border:2px solid var(--hood);background:var(--rock)"></canvas>
+    <h2 class="logo" style="font-size:30px" id="itemName"></h2>
+    <p style="margin:0;font-size:16px;line-height:1.6" id="itemDesc"></p>
+    <p class="small" id="itemAbil"></p>
+    <button class="act primary" id="btnItemOk">OK</button>
   </div>
 </div>
 

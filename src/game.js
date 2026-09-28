@@ -21,7 +21,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
-  const SAVE_KEY = 'recoilclimb.save.v2', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
+  const SAVE_KEY = 'recoilclimb.save.v3', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
   const prefs = Object.assign({ sound: true }, store.get(PREF_KEY, {}));
   let best = store.get(BEST_KEY, {}); // {summit, heaven} in frames
 
@@ -84,6 +84,12 @@
   const CRYSTAL = sprite(['...w...', '..waa..', '.waaab.', 'waaaabb', '.aaabb.', '..abb..', '...b...'], { w: '#fff1e8', a: '#00e436', b: '#008751' });
   const CRYSTAL_OFF = sprite(['...d...', '..d.d..', '.d...d.', 'd.....d', '.d...d.', '..d.d..', '...d...'], { d: '#5f574f' });
   const FEATHER = sprite(['.....w', '....ww', '...wwp', '..wwp.', '.wwp..', '.wp...', 'p.....'], { w: '#fff1e8', p: '#ff77a8' });
+  const ITEM_SPR = {
+    A: sprite(['.bbbbb.', '.bwbwb.', '.bybyb.', '.bybyb.', 'ooooooo', 'ooooooo', '.o...o.'], { b: '#ffa300', w: '#fff1e8', y: '#ffec27', o: '#83769c' }),
+    B: sprite(['..rr...', '.rrrr..', 'rrxrrr.', 'rrrxrr.', '.rxrrr.', '..rrw..', '...w...'], { r: '#ab5236', x: '#1a1020', w: '#ffec27' }),
+    K: sprite(['...w...', '..wbw..', '.wbbbw.', '..bbb..', '..bbb..', '..bbb..', '..w.w..'], { w: '#c6ecff', b: '#29adff' }),
+    M: sprite(['...r...', '..rrr..', '..rwr..', '..rrr..', '.yyyyy.', '.yyyyy.', '.ooooo.'], { r: '#ff004d', w: '#ff77a8', y: '#ffa300', o: '#ab5236' }),
+  };
   const SIGN = sprite(['........', '.bbbbbb.', '.bllllb.', '.bbbbbb.', '...pp...', '...pp...', '...pp...', '...pp...'], { b: '#ab5236', l: '#ffccaa', p: '#5f574f' });
 
   // ---------------------------------------------------------------- tile layer (pre-rendered, patched when cracks break)
@@ -157,6 +163,21 @@
         if ((lc && x === 0 && (y < 2 || y > 5)) || (rc && x === 7 && (y < 2 || y > 5))) continue;
         px(x, y, y > 4 ? '#ffccaa' : y === 0 ? '#ffffff' : '#fff1e8');
       }
+    } else if (ch === 'd') {
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        let col = (x % 3 === 1) ? '#7e2553' : '#ff004d';
+        if (y === 0 && !same(0, -1)) col = '#ff77a8';
+        if (y === 7 && !same(0, 1)) col = '#7e2553';
+        px(x, y, col);
+      }
+    } else if (ch === 'T' || ch === 't') {
+      const hit = ch === 't';
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const r = Math.hypot(x - 3.5, y - 3.5);
+        const ring = r < 1.5 ? 0 : r < 2.6 ? 1 : r < 3.8 ? 2 : 3;
+        const col = hit ? ['#5f574f', '#83769c', '#5f574f', '#1d2b53'][ring] : ['#ff004d', '#fff1e8', '#ff004d', '#7e2553'][ring];
+        px(x, y, col);
+      }
     } else if ('^v<>'.includes(ch)) {
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const col = ch === '^' ? SPIKE_UP(x, y) : ch === 'v' ? SPIKE_UP(x, 7 - y) : ch === '>' ? SPIKE_UP(y, 7 - x) : SPIKE_UP(7 - y, x);
@@ -170,13 +191,13 @@
   }
   for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) drawTile(tx, ty);
   const origGrid = L.grid.map((r) => r.slice());
-  let broken = [];
-  L.onBreak = (tx, ty) => { broken.push([tx, ty]); redrawAround(tx, ty); };
+  L.onChange = (tx, ty) => redrawAround(tx, ty);
   function resetWorld() {
-    for (const [tx, ty] of broken) { L.grid[ty][tx] = origGrid[ty][tx]; redrawAround(tx, ty); }
-    broken = [];
+    while (L.changes.length) { const [tx, ty] = L.changes.pop(); L.grid[ty][tx] = origGrid[ty][tx]; redrawAround(tx, ty); }
+    for (const t of L.targets) t.hit = false;
     for (const c of L.crystals) { c.active = true; c.t = 0; }
     for (const r of L.relics) r.got = false;
+    for (const it of L.items) it.got = false;
   }
 
   // ---------------------------------------------------------------- background
@@ -221,7 +242,9 @@
     crumble() { noise(0.3, 0.45, 900); tone({ f: 70, f2: 40, d: 0.25, type: 'triangle', v: 0.2 }); },
     die() { tone({ f: 520, f2: 90, d: 0.35, type: 'sawtooth', v: 0.08 }); noise(0.2, 0.2, 3000); },
     respawn() { [392, 523].forEach((f, i) => tone({ f, d: 0.08, type: 'triangle', v: 0.08, delay: i * 0.06 })); },
-    fall() { tone({ f: 330, f2: 110, d: 0.5, type: 'triangle', v: 0.1 }); },
+    clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
+    door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
+    item() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.07, delay: i * 0.07 })); },
     relic() { [784, 988, 1175, 1568].forEach((f, i) => tone({ f, d: 0.14, type: 'triangle', v: 0.1, delay: i * 0.07 })); },
     win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.18, v: 0.07, delay: i * 0.1 })); },
   };
@@ -229,7 +252,8 @@
 
   // ---------------------------------------------------------------- game state
   let state = 'title';
-  let p, time = 0, falls = 0, misses = 0, shots = 0, bestH = 0, lastGroundY = 0, summitDone = false, tick = 0;
+  let p, abil = Phys.newAbil(), time = 0, misses = 0, shots = 0, bestH = 0, summitDone = false, tick = 0;
+  let hintSeen = {};
   let safe = null, deadT = 0;
   const cam = { x: 0, y: 0, px: 0, py: 0 };
   let shake = 0, flash = null;
@@ -240,7 +264,7 @@
   const STICK_MIN = 4, STICK_FULL = 34;
 
   const surfaceAt = (tx, ty) => { const c = Phys.tileAt(L, tx, ty); return !Phys.isSolid(c) && !'^v<>'.includes(c) && Phys.isSolid(Phys.tileAt(L, tx, ty + 1)); };
-  function placeAt(tx, ty) { p = Phys.newPlayer(tx * 8 + 1, ty * 8 + 8 - C.PH - 0.0001); p.grounded = true; }
+  function placeAt(tx, ty) { p = Phys.newPlayer(tx * 8 + 1, ty * 8 + 8 - C.PH - 0.0001, abil); p.grounded = true; }
   const heightOf = (feet) => Math.max(0, Math.round((START_FEET - feet) / 8));
   const heightM = () => heightOf(p.y + C.PH);
   const clampCamX = (x) => clamp(x, 0, WW - VW);
@@ -249,31 +273,46 @@
 
   function newGame() {
     resetWorld();
+    abil = Phys.newAbil();
+    hintSeen = {};
     placeAt(Math.floor(L.start.x / 8), Math.floor(L.start.y / 8));
-    const m = /row(\d+)/.exec(location.hash); // debug: #row60 starts on the first ledge at/below that row
+    // debug: #row60 starts on the first ledge at/below that row, with every item found below it
+    const m = /row(\d+)/.exec(location.hash);
     if (m) {
-      outer: for (let ty = +m[1]; ty < L.h; ty++) for (let tx = L.w - 1; tx >= 0; tx--) if (surfaceAt(tx, ty)) { placeAt(tx, ty); break outer; }
+      const row = +m[1];
+      L.items.forEach((it) => { if (it.y / 8 > row) { it.got = true; Phys.grantItem(abil, it.type); } });
+      L.targets.forEach((t, i) => { if (t.ty > row) Phys.openTarget(L, i); });
+      outer: for (let ty = row; ty < L.h; ty++) for (let tx = L.w - 1; tx >= 0; tx--) if (surfaceAt(tx, ty)) { placeAt(tx, ty); break outer; }
     }
-    time = 0; falls = 0; misses = 0; shots = 0; bestH = 0; summitDone = false;
-    lastGroundY = p.y; safe = { x: p.x, y: p.y }; deadT = 0;
+    const at = /at(\d+),(\d+)/.exec(location.hash); // debug: #at52,165 starts on that exact tile
+    if (at) placeAt(+at[1], +at[2]);
+    time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false;
+    safe = { x: p.x, y: p.y }; deadT = 0;
     parts = []; tracers = []; toasts = [];
     snapCam();
   }
   function loadGame(s) {
     newGame();
-    for (const [tx, ty] of s.broken || []) if (L.grid[ty] && L.grid[ty][tx] === 'x') { L.grid[ty][tx] = '.'; broken.push([tx, ty]); redrawAround(tx, ty); }
+    for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && L.grid[ty][tx] === 'x') Phys.setTile(L, tx, ty, '.');
+    for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
-    const sp = s.safe || s;
-    p = Phys.newPlayer(sp.x, sp.y);
-    time = s.time || 0; falls = s.falls || 0; misses = s.misses || 0; shots = s.shots || 0; bestH = s.bestH || 0;
+    for (const i of s.items || []) if (L.items[i]) L.items[i].got = true;
+    abil = Object.assign(Phys.newAbil(), s.abil || {});
+    hintSeen = s.hints || {};
+    const sp = s.safe;
+    p = Phys.newPlayer(sp.x, sp.y, abil);
+    time = s.time || 0; misses = s.misses || 0; shots = s.shots || 0; bestH = s.bestH || 0;
     summitDone = !!s.summit;
-    safe = { x: sp.x, y: sp.y }; lastGroundY = sp.y;
+    safe = { x: sp.x, y: sp.y };
     snapCam();
   }
   function saveGame() {
     if (!p || state === 'title' || state === 'heaven') return;
     store.set(SAVE_KEY, {
-      safe, time, falls, misses, shots, bestH, summit: summitDone, broken,
+      safe, time, misses, shots, bestH, summit: summitDone, abil, hints: hintSeen,
+      cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]),
+      targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
+      items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
       relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0),
     });
   }
@@ -361,6 +400,19 @@
         burst(h.x, h.y, 12, ['#00e436', '#fff1e8'], 1.4, 0, 16);
         toast('補給！', h.x, h.y - 8, '#00e436', 50);
         SFX.crystal();
+      } else if (h.t === 'clank' || h.t === 'glass') {
+        burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
+        SFX.clank();
+        const key = h.t;
+        if (!hintSeen[key]) { hintSeen[key] = 1; toast(h.t === 'glass' ? 'ガラスに弾かれた' : 'かたい…いまは壊せない', h.x, h.y - 8, '#c2c3c7', 90); }
+      } else if (h.t === 'target') {
+        const t = L.targets[h.i];
+        burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
+        for (const [dx, dy] of t.doors) burst(dx * 8 + 4, dy * 8 + 4, 5, ['#ff004d', '#7e2553', '#ff77a8'], 1, 0.08, 24);
+        toast('ガコン！', h.x, h.y - 8, '#ff77a8', 60);
+        const d0 = t.doors[0];
+        if (d0) toast('扉が開いた', d0[0] * 8 + 16, d0[1] * 8 - 4, '#ff77a8', 90);
+        SFX.door(); shake = Math.max(shake, 5); buzz(25);
       }
     }
     burst(flash.x, flash.y, 4, ['#c2c3c7'], 0.4, -0.01, 16);
@@ -384,8 +436,7 @@
     time++;
     if (p.dead) {
       if (--deadT <= 0) {
-        p = Phys.newPlayer(safe.x, safe.y); p.grounded = true;
-        lastGroundY = p.y;
+        p = Phys.newPlayer(safe.x, safe.y, abil); p.grounded = true;
         burst(p.x + 3, p.y + 4, 10, ['#fff1e8', '#ffec27'], 1, 0, 14);
         SFX.respawn();
       }
@@ -401,13 +452,6 @@
       if (e.t === 'shot') { shot = true; onShot(e); }
       else if (e.t === 'land') {
         if (e.v > 2) { burst(p.x + 3, p.y + C.PH, 5, ['#c2c3c7'], 0.7, 0.03, 12); SFX.land(); }
-        const drop = p.y - lastGroundY;
-        if (drop > 6 * 8) {
-          falls++;
-          toast('-' + Math.round(drop / 8) + 'm', p.x + 3, p.y - 6, '#ff77a8');
-          SFX.fall(); shake = 6;
-        }
-        lastGroundY = p.y;
       } else if (e.t === 'die') {
         misses++; deadT = 40;
         burst(p.x + 3, p.y + 4, 16, ['#ff004d', '#fff1e8', '#ffec27'], 1.8, 0.04, 20);
@@ -421,6 +465,10 @@
         burst(e.x, e.y, 18, ['#fff1e8', '#ff77a8', '#ffec27'], 1.6, 0, 26);
         toast('羽根 ' + relicCount() + '/' + L.relics.length, e.x, e.y - 8, '#ff77a8', 90);
         SFX.relic(); buzz(30); saveGame();
+      } else if (e.t === 'item') {
+        burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
+        SFX.item(); buzz(60);
+        itemGet(e.type);
       } else if (e.t === 'flag') summit();
       else if (e.t === 'heaven') heaven();
     }
@@ -508,7 +556,18 @@
     ctx.globalAlpha = 0.6;
     dotted(bullet.segs, 72, '#fff1e8', 3, 9);
     ctx.globalAlpha = 1;
-    if (p.ammo <= 0 || p.cd > 0 && p.ammo <= 0) return;
+    // light up whatever this shot would hit (crystals refill, targets open doors)
+    const blink = Math.floor(tick / 4) % 2 === 0;
+    for (const h of bullet.hits) {
+      let x = null, y = null, col = null;
+      if (h.t === 'crystal') { x = h.x; y = h.y; col = '#00e436'; }
+      else if (h.t === 'target') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ff77a8'; }
+      else if (h.t === 'break') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ffa300'; }
+      if (x === null) continue;
+      ctx.strokeStyle = blink ? col : '#fff1e8'; ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(x) - 5.5, Math.round(y) - 5.5, 11, 11);
+    }
+    if (p.ammo <= 0) return;
     // predicted flight after this shot
     const q = Object.assign({}, p);
     Phys.step(L, q, { fire: { dx: v.dx, dy: v.dy, pow: v.pow } }, null, true);
@@ -530,7 +589,7 @@
     if (p.dead) return;
     const face = aim.x >= 0 ? 1 : -1;
     const legs = !p.grounded ? 'air' : Math.abs(p.vx) > 0.4 ? 'slide' : 'idle';
-    const spr = PSPR[clamp(p.ammo, 0, 2)][legs];
+    const spr = PSPR[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1][legs];
     const x = Math.round(p.x) - 1, y = Math.round(p.y) - 1;
     ctx.save();
     if (face < 0) { ctx.translate(x + 8, y); ctx.scale(-1, 1); ctx.drawImage(spr, 0, 0); }
@@ -543,7 +602,7 @@
     }
     // shots left, over the head (always while airborne or aiming)
     if (!p.grounded || aiming()) {
-      for (let i = 0; i < C.AMMO; i++) {
+      for (let i = 0; i < Phys.maxAmmo(p); i++) {
         const has = i < p.ammo;
         const bx = Math.round(p.x) + i * 4, by = Math.round(p.y) - 5;
         ctx.fillStyle = '#000'; ctx.fillRect(bx, by, 3, 3);
@@ -558,6 +617,17 @@
       const bob = c.active ? Math.round(Math.sin(tick / 14 + c.x) * 1.5) : 0;
       ctx.drawImage(c.active ? CRYSTAL : CRYSTAL_OFF, c.x - 3, c.y - 3 + bob);
       if (c.active && tick % 40 < 3) { ctx.fillStyle = '#fff1e8'; ctx.fillRect(c.x + 2, c.y - 4 + bob, 1, 1); }
+    }
+    for (const it of L.items) {
+      if (it.got) continue;
+      const bob = Math.round(Math.sin(tick / 16 + it.x) * 1.5);
+      const glow = (Math.sin(tick / 10) + 1) / 2;
+      ctx.globalAlpha = 0.25 + glow * 0.3;
+      ctx.fillStyle = '#ffec27'; ctx.fillRect(it.x - 6, it.y - 6 + bob, 13, 13);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#5f574f'; ctx.fillRect(it.x - 4, it.y + 4, 9, 1);
+      ctx.drawImage(ITEM_SPR[it.type], it.x - 3, it.y - 4 + bob);
+      if (tick % 30 < 3) { ctx.fillStyle = '#fff1e8'; ctx.fillRect(it.x + 3, it.y - 6 + bob, 1, 1); }
     }
     for (const r of L.relics) {
       if (r.got) continue;
@@ -597,7 +667,7 @@
   function drawHUD() {
     const top = 4;
     drawText(heightM() + 'm', 4, top, '#fff1e8');
-    for (let i = 0; i < C.AMMO; i++) {
+    for (let i = 0; i < Phys.maxAmmo(p); i++) {
       const full = i < p.ammo;
       ctx.fillStyle = '#000'; ctx.fillRect(5 + i * 5, top + 9, 3, 5);
       ctx.fillStyle = full ? '#ffa300' : '#5f574f'; ctx.fillRect(4 + i * 5, top + 8, 3, 5);
@@ -699,13 +769,32 @@
   }
 
   // ---------------------------------------------------------------- screens
-  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven') };
+  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem') };
   function show(name) {
     for (const k in scr) scr[k].hidden = k !== name;
     $('btnPause').hidden = name !== null;
   }
   const statsHTML = (rows) => rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
-  const baseStats = () => [['タイム', fmtTime(time)], ['落下', falls + '回'], ['ミス', misses + '回'], ['発砲', shots + '発'], ['羽根', relicCount() + ' / ' + L.relics.length]];
+  const baseStats = () => [['タイム', fmtTime(time)], ['ミス', misses + '回'], ['発砲', shots + '発'], ['羽根', relicCount() + ' / ' + L.relics.length]];
+  function abilList() {
+    const out = ['空中の弾 ' + abil.ammo + '発'];
+    if (abil.breaker) out.push('砕岩弾');
+    if (abil.pierce) out.push('貫通弾');
+    if (abil.magnum) out.push('強装弾');
+    return out.join(' / ');
+  }
+  function itemGet(type) {
+    const info = Phys.ITEMS[type];
+    state = 'item'; stick = null; pendingFire = null;
+    const c = $('itemIcon'); const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(ITEM_SPR[type], 0, 0, 7, 7, 4, 4, 56, 56);
+    $('itemName').textContent = info.name;
+    $('itemDesc').textContent = info.desc;
+    $('itemAbil').textContent = '現在の力: ' + abilList();
+    saveGame();
+    setTimeout(() => { if (state === 'item') show('item'); }, 350);
+  }
   let newArmed = false;
   function refreshTitle() {
     const has = !!store.get(SAVE_KEY, null);
@@ -734,6 +823,7 @@
   function pause() {
     state = 'pause'; saveGame(); stick = null;
     $('pauseStats').innerHTML = statsHTML([['高さ', heightM() + 'm'], ['最高到達', bestH + 'm']].concat(baseStats()));
+    $('pauseAbil').textContent = '現在の力: ' + abilList();
     syncSound(); show('pause');
   }
   const resume = play;
@@ -766,6 +856,7 @@
     }, 1500);
   }
   $('btnPause').addEventListener('click', pause);
+  $('btnItemOk').addEventListener('click', play);
   $('btnResume').addEventListener('click', resume);
   $('btnTitle').addEventListener('click', toTitle);
   $('btnClearTitle').addEventListener('click', toTitle);
@@ -795,7 +886,7 @@
   let last = performance.now(), acc = 0;
   const DT = 1000 / 60;
   function frame(now) {
-    const slow = state === 'play' && p && !p.grounded && aiming() ? 0.35 : 1;
+    const slow = state === 'play' && p && !p.grounded && aiming() ? 0.2 : 1;
     acc += Math.min(100, now - last) * slow; last = now;
     while (acc >= DT) { update(); acc -= DT; }
     render();
