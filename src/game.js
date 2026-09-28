@@ -76,10 +76,13 @@
   }
   // Player: an original hooded wanderer (8x10). Glowing visor, pale jacket; a long scarf is simulated separately.
   // The visor colour shows ammo (cyan full / amber some / dark none).
-  const BODY = ['...kk...', '..kkkk..', '.kkvvvk.', '.kksssk.', '..rrrr..', '.hjjjjh.', '.hjwwjh.', '..jjjj..'];
-  const LEGS = { idle: ['..d..d..', '..n..n..'], air: ['..dddd..', '.n....n.'], slide: ['.dd..dd.', 'nn....nn'] };
-  const LAMP = ['#2e3238', '#ffb347', '#8ff8ff'];
-  const PAL = { k: '#23262d', s: '#0b0c0f', r: '#e0303a', h: '#1a1c21', j: '#c9ced6', w: '#6ff7ff', d: '#2a2e36', n: '#101216' };
+  // Player (10x12): a girl with long white hair, a half-face respirator and an orange work jacket,
+  // wrapped in a long red scarf (the trailing part is simulated). The respirator's filter lamps show ammo.
+  const PW_SPR = 10, PH_SPR = 12;
+  const BODY = ['..ssssss..', '.ssssssss.', '.sSffffSs.', '.sfeffefs.', '.smmmmmms.', '.smvmmvms.', 's.rrrrrr..', 'sgoooooog.', 's.o####o..'];
+  const LEGS = { idle: ['..kk..kk..', '..kk..kk..', '.nnn..nnn.'], air: ['..kkkkkk..', '.kk....kk.', '.n......n.'], slide: ['.kk...kk..', 'kk.....kk.', 'nn.....nn.'] };
+  const LAMP = ['#3a3f47', '#ffb347', '#6ff7ff'];
+  const PAL = { s: '#eef1f4', S: '#aab3bd', f: '#f0d0c0', e: '#241820', m: '#2a2d33', r: '#e0303a', o: '#e06a1e', '#': '#e6e8ea', g: '#2a2d33', k: '#1d2026', n: '#101216' };
   const PSPR = LAMP.map((v) => {
     const out = {};
     for (const k in LEGS) out[k] = sprite(BODY.concat(LEGS[k]), Object.assign({}, PAL, { v }));
@@ -452,19 +455,19 @@
   const heightM = () => heightOf(p.y + C.PH);
   const clampCamX = (x) => clamp(x, 0, WW - VW);
   const clampCamY = (y) => clamp(y, 0, WH - VH);
-  function resetScarf() { scarf = [...Array(7)].map(() => ({ x: p.x + 3, y: p.y + 1, px: p.x + 3, py: p.y + 1 })); }
+  function resetScarf() { scarf = [...Array(11)].map(() => ({ x: p.x + 3, y: p.y + 1, px: p.x + 3, py: p.y + 1 })); }
   function updateScarf() {
     if (!p || !scarf.length) return;
     const face = aim.x >= 0 ? 1 : -1;
     const a = scarf[0];
-    a.x = a.px = p.x + 3 - face; a.y = a.py = p.y + 1;
+    a.x = a.px = p.x + 3 - face * 2; a.y = a.py = p.y + 1;
     for (let i = 1; i < scarf.length; i++) {
       const n = scarf[i], prev = scarf[i - 1];
-      const vx = (n.x - n.px) * 0.86, vy = (n.y - n.py) * 0.86;
+      const vx = (n.x - n.px) * 0.9, vy = (n.y - n.py) * 0.9;
       n.px = n.x; n.py = n.y;
-      n.x += vx - face * 0.06 + Math.sin(tick * 0.09 + i * 0.8) * 0.05;
-      n.y += vy + 0.04;
-      const dx = n.x - prev.x, dy = n.y - prev.y, d = Math.hypot(dx, dy) || 1, L0 = 1.6;
+      n.x += vx - face * 0.14 + Math.sin(tick * 0.09 + i * 0.8) * 0.07;
+      n.y += vy + 0.05;
+      const dx = n.x - prev.x, dy = n.y - prev.y, d = Math.hypot(dx, dy) || 1, L0 = 1.5;
       n.x = prev.x + dx / d * L0; n.y = prev.y + dy / d * L0;
     }
   }
@@ -636,7 +639,7 @@
   const later = (fn) => setTimeout(fn, 70);
   function pushGhost(life) {
     const legs = !p.grounded ? 'air' : Math.abs(p.vx) > 0.4 ? 'slide' : 'idle';
-    ghosts.push({ x: Math.round(p.x) - 1, y: Math.round(p.y) - 3, face: aim.x >= 0 ? 1 : -1, legs, life, max: life });
+    ghosts.push({ x: Math.round(p.x) - 2, y: Math.round(p.y) - 5, face: aim.x >= 0 ? 1 : -1, legs, life, max: life });
   }
   function isSafeSpot() {
     if (!p.grounded || Math.abs(p.vx) > 0.2) return false;
@@ -804,12 +807,12 @@
     const face = aim.x >= 0 ? 1 : -1;
     const legs = !p.grounded ? 'air' : Math.abs(p.vx) > 0.4 ? 'slide' : 'idle';
     const spr = PSPR[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1][legs];
-    const x = Math.round(p.x) - 1, y = Math.round(p.y) - 3;
+    const x = Math.round(p.x) - 2, y = Math.round(p.y) - 5;
     // afterimages
     for (const g of ghosts) {
       ctx.globalAlpha = (g.life / g.max) * 0.45;
       ctx.save();
-      if (g.face < 0) { ctx.translate(g.x + 8, g.y); ctx.scale(-1, 1); ctx.drawImage(GHOST[g.legs], 0, 0); }
+      if (g.face < 0) { ctx.translate(g.x + PW_SPR, g.y); ctx.scale(-1, 1); ctx.drawImage(GHOST[g.legs], 0, 0); }
       else ctx.drawImage(GHOST[g.legs], g.x, g.y);
       ctx.restore();
     }
@@ -817,25 +820,24 @@
     // scarf (behind the body)
     for (let i = 1; i < scarf.length; i++) {
       const n = scarf[i];
-      ctx.fillStyle = i < 4 ? '#e0303a' : i < 6 ? '#a8222c' : '#6a141c';
-      ctx.fillRect(Math.round(n.x), Math.round(n.y), 1, i < 3 ? 2 : 1);
+      ctx.fillStyle = i < 5 ? '#e0303a' : i < 8 ? '#b8252f' : '#7a161e';
+      ctx.fillRect(Math.round(n.x), Math.round(n.y), 1, i < 6 ? 2 : 1);
     }
     ctx.save();
-    if (face < 0) { ctx.translate(x + 8, y); ctx.scale(-1, 1); ctx.drawImage(spr, 0, 0); }
+    if (face < 0) { ctx.translate(x + PW_SPR, y); ctx.scale(-1, 1); ctx.drawImage(spr, 0, 0); }
     else ctx.drawImage(spr, x, y);
     ctx.restore();
-    const cx = Math.round(p.x + 3), cy = Math.round(p.y + 4);
-    for (let d = 2; d <= 8; d++) {
-      ctx.fillStyle = d >= 7 ? '#dfe3e8' : '#3a3f47';
+    const cx = Math.round(p.x + 3), cy = Math.round(p.y + 3);
+    for (let d = 3; d <= 9; d++) {
+      ctx.fillStyle = d >= 8 ? '#dfe3e8' : '#3a3f47';
       ctx.fillRect(Math.round(cx + aim.x * d), Math.round(cy + aim.y * d), 1, 1);
     }
     // shots left, over the head (always while airborne or aiming)
     if (!p.grounded || aiming()) {
       for (let i = 0; i < Phys.maxAmmo(p); i++) {
         const has = i < p.ammo;
-        const bx = Math.round(p.x) + i * 4, by = Math.round(p.y) - 7;
-        ctx.fillStyle = '#000'; ctx.fillRect(bx, by, 3, 3);
-        ctx.fillStyle = has ? '#8ff8ff' : '#3a3f47'; ctx.fillRect(bx, by, 2, 2);
+        const bx = Math.round(p.x) + i * 4, by = Math.round(p.y) - 9;
+        ctx.fillStyle = has ? '#8ff8ff' : '#3a3f47'; ctx.fillRect(bx + 1, by, 2, 1);
       }
     }
   }
@@ -914,9 +916,9 @@
       ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(flash.x), Math.round(flash.y), 1, 1);
     }
     if (p && !p.dead) { // visor glow cuts through the dark
-      const f = aim.x >= 0 ? 1 : -1, vx = Math.round(p.x) - 1 + (f > 0 ? 3 : 2), vy = Math.round(p.y) - 1;
+      const sx = Math.round(p.x) - 2, sy = Math.round(p.y) - 5; // respirator filter lamps (symmetric)
       ctx.fillStyle = LAMP[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1];
-      ctx.fillRect(vx, vy, 3, 1);
+      ctx.fillRect(sx + 3, sy + 5, 1, 1); ctx.fillRect(sx + 6, sy + 5, 1, 1);
     }
     drawPreview();
   }
