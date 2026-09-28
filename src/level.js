@@ -163,7 +163,12 @@
   const EXTRA_SIGNS = [
     [78, 135, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
   ];
-  const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS };
+  // relay terminals: touch to activate, then transfer between them from the pause menu. [tile x, tile y, name]
+  const WAYPOINTS = [
+    [7, 169, '目覚めの床'], [126, 165, '塔の入口'], [121, 126, '砕けた天井'], [124, 96, '冷たい縦穴'],
+    [132, 82, '硝子の間'], [135, 62, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
+  ];
+  const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS, WAYPOINTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.LEVEL = API;
 })(typeof window !== 'undefined' ? window : globalThis);

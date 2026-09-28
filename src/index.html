@@ -30,6 +30,9 @@
   .overlay::before { content: ''; position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px); }
   .overlay::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.7) 100%); }
   .panel { position: relative; z-index: 1; }
+  .warplist { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
+  button.act.warp { display: flex; justify-content: space-between; align-items: baseline; font-size: 16px; padding: 10px 12px; }
+  button.act.warp .h { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .loglist { display: flex; flex-direction: column; gap: 12px; text-align: left; max-height: 55vh; overflow-y: auto; }
   .log { border-left: 2px solid #ff3fa4; padding: 2px 0 2px 10px; }
   .logno { font-size: 11px; color: #ff3fa4; letter-spacing: .2em; }
@@ -89,9 +92,10 @@
       <button class="act" id="btnHaptics">振動　ON</button>
     </div>
     <div class="row">
+      <button class="act" id="btnWarp">転移</button>
       <button class="act" id="btnLogs">記録</button>
-      <button class="act" id="btnTitle">タイトルへ</button>
     </div>
+    <button class="act" id="btnTitle">タイトルへ</button>
     <button class="act primary" id="btnResume">戻る</button>
   </div>
 </div>
@@ -104,6 +108,16 @@
     <p style="margin:0;font-size:16px;line-height:1.7;white-space:pre-line" id="itemDesc"></p>
     <p class="small" id="itemAbil"></p>
     <button class="act primary" id="btnItemOk">受け入れる</button>
+  </div>
+</div>
+
+<div class="overlay" id="scrWarp" hidden>
+  <div class="panel">
+    <h2 class="logo" style="font-size:26px">転移</h2>
+    <p class="sub">起動した中継点へ移る。</p>
+    <hr class="rule">
+    <div id="warpList" class="warplist"></div>
+    <button class="act primary" id="btnWarpBack">戻る</button>
   </div>
 </div>
 
@@ -129,7 +143,7 @@
 <div class="overlay" id="scrHeaven" hidden>
   <div class="panel">
     <h2 class="logo heaven" style="font-size:34px">OUTSIDE</h2>
-    <p class="sub">外だ。誰も、ここまでは来なかった。</p>
+    <p class="sub" id="heavenSub">外だ。誰も、ここまでは来なかった。</p>
     <dl class="stats" id="heavenStats"></dl>
     <p class="hint" id="heavenHint"></p>
     <button class="act primary" id="btnHeavenTitle">探索を続ける</button>

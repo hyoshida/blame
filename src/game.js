@@ -11,6 +11,7 @@
   const L = Phys.makeLevel(window.LEVEL.ROWS);
   const SIGNS = window.LEVEL.SIGNS;
   for (const [tx, ty, text] of window.LEVEL.EXTRA_SIGNS || []) L.signs.push({ x: tx * 8, y: ty * 8, text });
+  const WPS = (window.LEVEL.WAYPOINTS || []).map(([tx, ty, name], i) => ({ i, tx, ty, name, x: tx * 8, y: ty * 8, on: false }));
   const WW = L.w * 8, WH = L.h * 8;
   const START_FEET = Math.floor(L.start.y / 8) * 8 + 8;
   const SUMMIT_FEET = L.flag.y + 8;
@@ -106,6 +107,8 @@
     K: sprite(['...w...', '..wbw..', '.wbbbw.', '..bbb..', '..bbb..', '..bbb..', '..w.w..'], { w: '#c6ecff', b: '#29adff' }),
     M: sprite(['...r...', '..rrr..', '..rwr..', '..rrr..', '.yyyyy.', '.yyyyy.', '.ooooo.'], { r: '#ff004d', w: '#ff77a8', y: '#ffa300', o: '#ab5236' }),
   };
+  const RELAY_OFF = sprite(['..ff....', '.fddf...', '.fddf...', '.fddf...', '.fddf...', '.ffff...', 'ffffff..', 'ffffff..'], { f: '#2e3238', d: '#3a1418' });
+  const RELAY_ON = sprite(['..ff....', '.fccf...', '.fwcf...', '.fccf...', '.fccf...', '.ffff...', 'ffffff..', 'ffffff..'], { f: '#3a3f48', c: '#3fd8ff', w: '#ffffff' });
   const SIGN = sprite(['.ffffff.', '.fllssf.', '.fssssf.', '.flllsf.', '.ffffff.', '...ff...', '...ff...', '..ffff..'], { f: '#2e3238', s: '#1f1608', l: '#ffb347' }); // wall terminal
 
   // ---------------------------------------------------------------- tile layer (pre-rendered, patched when cracks break)
@@ -395,6 +398,7 @@
     crumble() { noise(0.3, 0.45, 900); tone({ f: 70, f2: 40, d: 0.25, type: 'triangle', v: 0.2 }); },
     die() { tone({ f: 520, f2: 90, d: 0.35, type: 'sawtooth', v: 0.08 }); noise(0.2, 0.2, 3000); },
     respawn() { [392, 523].forEach((f, i) => tone({ f, d: 0.08, type: 'triangle', v: 0.08, delay: i * 0.06 })); },
+    relay() { [392, 587, 784].forEach((f, i) => tone({ f, d: 0.16, type: 'triangle', v: 0.09, delay: i * 0.08 })); },
     blast() { noise(0.35, 0.55, 3800); tone({ f: 70, f2: 30, d: 0.3, type: 'sawtooth', v: 0.16 }); },
     clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
     door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
@@ -471,6 +475,7 @@
   let parts = [], tracers = [], toasts = [], ghosts = [];
   let scarf = [];
   let relicOrder = []; // record shards in the order they were found
+  let inGate = false;
   let aim = { x: 0.7, y: 0.7 }, pow = 1;
   let stick = null; // {id, ox, oy, x, y}
   let pendingFire = null;
@@ -521,7 +526,9 @@
     time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false; heavenDone = false;
     safe = { x: p.x, y: p.y }; deadT = 0;
     parts = []; tracers = []; toasts = [];
-    snapCam(); resetScarf(); ghosts = []; relicOrder = [];
+    snapCam(); resetScarf(); ghosts = []; relicOrder = []; inGate = false;
+    for (const w of WPS) w.on = false;
+    if (m) for (const w of WPS) if (w.ty >= +m[1]) w.on = true;
     for (const hdn of HIDDEN) hdn.t = 0;
   }
   function loadGame(s) {
@@ -530,6 +537,7 @@
     for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
     relicOrder = (s.relicOrder || s.relics || []).filter((i) => L.relics[i]);
+    for (const i of s.relays || []) if (WPS[i]) WPS[i].on = true;
     for (const i of s.items || []) if (L.items[i]) L.items[i].got = true;
     abil = Object.assign(Phys.newAbil(), s.abil || {});
     const sp = s.safe;
@@ -547,6 +555,7 @@
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
       relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0), relicOrder,
+      relays: WPS.filter((w) => w.on).map((w) => w.i),
     });
   }
   const relicCount = () => L.relics.filter((r) => r.got).length;
@@ -746,7 +755,7 @@
         SFX.item(); HAPTIC.item();
         itemGet(e.type);
       } else if (e.t === 'flag') summit();
-      else if (e.t === 'heaven') heaven();
+      // (the heaven gate is handled below on every entry)
     }
     if (pendingFire && !shot) {
       if (p.ammo <= 0) { SFX.click(); toast('――空だ', p.x + 3, p.y - 8, '#7a808a', 30); pendingFire = null; }
@@ -754,6 +763,18 @@
     } else pendingFire = null;
 
     if (!p.dead && isSafeSpot()) { safe.x = p.x; safe.y = p.y; }
+    { // outside gate: every time you step into its light
+      const g = L.gate, ov = p.x < g.x + 8 && p.x + C.PW > g.x && p.y < g.y + 8 && p.y + C.PH > g.y - 8;
+      if (ov && !inGate && !p.dead) heaven();
+      inGate = ov;
+    }
+    for (const w of WPS) { // relay terminals switch on when you pass them
+      if (w.on || Math.abs(p.x + 3 - (w.x + 3)) > 8 || Math.abs(p.y + 4 - (w.y + 4)) > 10) continue;
+      w.on = true;
+      burst(w.x + 3, w.y + 2, 14, ['#3fd8ff', '#ffffff'], 1.4, 0, 20);
+      toast('中継点「' + w.name + '」起動　静止画面から転移できる', w.x + 3, w.y - 10, '#6ff7ff', 150);
+      SFX.relay(); HAPTIC.crystal(); saveGame();
+    }
     if (Math.hypot(p.vx, p.vy) > 3 && tick % 3 === 0) pushGhost(8);
     updateScarf();
     if (p.grounded && Math.abs(p.vx) > 0.6 && tick % 4 === 0) burst(p.x + 3, p.y + C.PH, 1, ['#83769c'], 0.3, 0, 10);
@@ -916,6 +937,7 @@
       if (gx < 8) { ctx.fillStyle = '#c8fbff'; ctx.fillRect(tx * 8 + gx, ty * 8, 1, 1); }
     }
     for (const s of L.signs) ctx.drawImage(SIGN, s.x, s.y);
+    for (const w of WPS) ctx.drawImage(w.on ? RELAY_ON : RELAY_OFF, w.x + 1, w.y);
     for (const c of L.crystals) {
       const bob = c.active ? Math.round(Math.sin(tick / 14 + c.x) * 1.5) : 0;
       ctx.drawImage(c.active ? CRYSTAL : CRYSTAL_OFF, c.x - 3, c.y - 3 + bob);
@@ -1014,6 +1036,7 @@
     for (const it of L.items) if (!it.got) add(it.x, it.y, 26, 0.9, '#ffd98a');
     for (const r of L.relics) if (!r.got) add(r.x, r.y, 12, 0.7, '#ff3fa4');
     for (const sg of L.signs) add(sg.x + 4, sg.y + 3, 16, 0.7, '#ffb347');
+    for (const w of WPS) add(w.x + 3, w.y + 2, w.on ? 26 : 10, w.on ? 0.9 : 0.5, w.on ? '#3fd8ff' : '#ff3040');
     for (const e of EMBERS) add(e.x - e.side * 3, e.y, 22, 0.7 + 0.2 * Math.sin(tick * 0.2 + e.seed), '#ff7a2a');
     for (const t of L.targets) if (!t.hit) add(t.tx * 8 + 4, t.ty * 8 + 4, 14, tick % 60 < 40 ? 0.9 : 0.5, '#ff3040');
     add(L.flag.x + 4, L.flag.y + 3, 22, 0.8, '#ff3040');
@@ -1171,7 +1194,7 @@
   }
 
   // ---------------------------------------------------------------- screens
-  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs') };
+  const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs'), warp: $('scrWarp') };
   function show(name) {
     for (const k in scr) scr[k].hidden = k !== name;
     $('btnPause').hidden = name !== null;
@@ -1275,8 +1298,19 @@
     }, 1200);
   }
   function heaven() {
-    if (heavenDone) { toast('――外だ。', L.gate.x + 4, L.gate.y - 10, '#fff4dc', 60); return; }
+    const again = heavenDone;
     heavenDone = true;
+    if (again) {
+      state = 'clearing'; stick = null; pendingFire = null;
+      SFX.relay();
+      const rc = relicCount();
+      $('heavenSub').textContent = '――また、ここに来た。';
+      $('heavenStats').innerHTML = statsHTML(baseStats());
+      $('heavenHint').textContent = rc < L.relics.length ? '記録片は、まだ下に眠っている。（' + rc + '/' + L.relics.length + '）' : '記録片は、すべて揃った。…それで、何が変わる？';
+      setTimeout(() => { state = 'heaven'; show('heaven'); }, 400);
+      return;
+    }
+    $('heavenSub').textContent = '外だ。誰も、ここまでは来なかった。';
     SFX.win(); HAPTIC.heaven();
     burst(L.gate.x + 4, L.gate.y, 60, ['#ffffff', '#e6dcc4', '#6ff7ff'], 2.5, 0.02, 70);
     if (!best.heaven || time < best.heaven) { best.heaven = time; store.set(BEST_KEY, best); }
@@ -1293,6 +1327,32 @@
   $('btnItemOk').addEventListener('click', play);
   $('btnLogs').addEventListener('click', showLogs);
   $('btnLogsBack').addEventListener('click', () => show('pause'));
+  function showWarp() {
+    const list = $('warpList');
+    list.innerHTML = '';
+    const on = WPS.filter((w) => w.on);
+    if (!on.length) list.innerHTML = '<p class="small">まだ、どの中継点も起動していない。</p>';
+    for (const w of on.slice().reverse()) {
+      const b = document.createElement('button');
+      b.className = 'act warp';
+      b.innerHTML = '<span>' + w.name + '</span><span class="h">' + heightOf(w.y + 8) + 'm</span>';
+      b.addEventListener('click', () => warpTo(w));
+      list.appendChild(b);
+    }
+    show('warp');
+  }
+  function warpTo(w) {
+    p = Phys.newPlayer(w.x + 1, w.y + 8 - C.PH - 0.0001, abil); p.grounded = true;
+    safe = { x: p.x, y: p.y };
+    inGate = w.ty < 6; // arriving at the gate's relay should not replay the ending
+    snapCam(); resetScarf(); ghosts = [];
+    burst(p.x + 3, p.y + 3, 18, ['#3fd8ff', '#ffffff'], 1.6, 0, 22);
+    SFX.relay(); HAPTIC.respawn();
+    saveGame();
+    play();
+  }
+  $('btnWarp').addEventListener('click', showWarp);
+  $('btnWarpBack').addEventListener('click', () => show('pause'));
   $('btnResume').addEventListener('click', resume);
   $('btnTitle').addEventListener('click', toTitle);
   $('btnExplore').addEventListener('click', play);
