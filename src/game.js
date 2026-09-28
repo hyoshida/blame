@@ -758,7 +758,7 @@
       e.preventDefault();
     }
   });
-  // charged shot: held at full power for CHARGE_WAIT, then CHARGE_MS of charging (any rounds left, magazine owned)
+  // charged shot: held at full power for CHARGE_WAIT, then CHARGE_MS of charging (2+ rounds left)
   const isMax = (out) => out >= C.CORE_OUT && abil.breaker && abil.magnum;
   function chargeLevel() {
     if (!stick || !stick.fullAt || !p || p.dead || !Phys.canCharge(p)) return 0;

@@ -21,9 +21,9 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
-    CHARGE_WAIT: 1500, // ms held at full power before charging starts (long enough to never happen by accident)
+    CHARGE_WAIT: 5000, // ms held at full power before charging starts (long enough to never happen by accident)
     CHARGE_MS: 1200,   // ms of charging (the red ring) until the shot is charged
-    CHARGE_BOOST: 0.2, // extra recoil per extra round spent in a charged shot
+    CHARGE_BOOST: 0.3, // extra recoil per extra round spent in a charged shot
     PLATE_OUT: 2,      // rounds a charged shot needs to shatter armor plates (V)
     CORE_OUT: 3,       // ... and the superstructure's core (with breaker + magnum): the whole magazine at max
     WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
@@ -138,7 +138,7 @@
     return { x, y, vx: 0, vy: 0, abil: a, ammo: a.ammo + 1, cd: 0, grounded: false, onIce: false, dead: false, won: false, heaven: false };
   }
   const maxAmmo = (p) => p.abil.ammo + 1; // one ground shot + air shots
-  const canCharge = (p) => maxAmmo(p) >= 2 && p.ammo >= 1; // any rounds left, once you own a magazine
+  const canCharge = (p) => p.ammo >= 2; // two or more rounds left (so a magazine must be owned)
   // the plate hit and every plate joined to it
   function plateCluster(L, tx, ty) {
     const out = [], seen = new Set([ty * L.w + tx]), st = [[tx, ty]];

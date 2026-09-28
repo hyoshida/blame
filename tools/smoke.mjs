@@ -48,7 +48,7 @@ await page.waitForTimeout(1200);
 await page.screenshot({ path: out + '5-item.png' });
 if (await page.isVisible('#btnItemOk')) await page.tap('#btnItemOk');
 await start('#at128,521');                                      // under the armor plate: hold at full power to charge
-await drag(200, 520, 200, 300, { hold: 3200, shot: '5b-charging.png' });
+await drag(200, 520, 200, 300, { hold: 6600, shot: '5b-charging.png' });
 await page.waitForTimeout(500);
 await page.screenshot({ path: out + '5c-plate.png' });
 await start('#row393');                                         // glass hall top: sensor in glass
@@ -62,7 +62,7 @@ await page.screenshot({ path: out + '9-crown.png' });
 await start('#at16,137');
 await page.screenshot({ path: out + '10-chute.png' });
 await start('#at61,35+AAABKM');                                   // under the core: max-output shot
-await drag(200, 520, 200, 300, { hold: 3200 });
+await drag(200, 520, 200, 300, { hold: 6600 });
 await page.waitForTimeout(120);
 await page.screenshot({ path: out + '10a-maxshot.png' });
 await page.waitForTimeout(1500);
