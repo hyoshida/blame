@@ -48,7 +48,7 @@
   // R2: high ledge near the tower's outer wall; reachable early only by a wall blast off the scorched wall
   stamp(107, 152, ['####']); put(108, 151, '*');
   // hidden walkway from R2 up and left to R3 (tells about shooting cells below you)
-  stamp(99, 148, ['hhh']); stamp(91, 144, ['hhh']); stamp(83, 140, ['hhh']); stamp(75, 136, ['hhh']); put(76, 135, '*');
+  stamp(99, 148, ['hhh']); stamp(91, 144, ['hhh']); stamp(83, 140, ['hhh']); stamp(75, 136, ['hhhh']); put(76, 135, '*');
   put(2, 169, 'P');
   put(4, 169, '1');
   put(10, 169, '2');
@@ -99,6 +99,8 @@
     82: '.......K..........',
     83: '....##############',
     // tall shaft (needs 3 shots)
+    // hidden step: lets someone who knows skip the second magazine
+    90: '.......hhh........',
     96: '..A...............',
     97: '######............',
     // ice
@@ -157,7 +159,11 @@
     8: '赤い眼が、こちらを見ている。\n閉ざしたのは、あれだ。',
     9: '最上層――のはずだった。\n天井の亀裂から、何かが漏れている。',
   };
-  const API = { ROWS, SIGNS, SCORCH, RECORDS };
+  // extra terminals with their own text: [tile x, tile y, text]
+  const EXTRA_SIGNS = [
+    [78, 135, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
+  ];
+  const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.LEVEL = API;
 })(typeof window !== 'undefined' ? window : globalThis);

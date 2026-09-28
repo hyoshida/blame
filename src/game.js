@@ -10,6 +10,7 @@
   const ui = $('ui'), uctx = ui.getContext('2d');
   const L = Phys.makeLevel(window.LEVEL.ROWS);
   const SIGNS = window.LEVEL.SIGNS;
+  for (const [tx, ty, text] of window.LEVEL.EXTRA_SIGNS || []) L.signs.push({ x: tx * 8, y: ty * 8, text });
   const WW = L.w * 8, WH = L.h * 8;
   const START_FEET = Math.floor(L.start.y / 8) * 8 + 8;
   const SUMMIT_FEET = L.flag.y + 8;
@@ -231,7 +232,8 @@
       tg.fillRect(x, by + y, 1, 1);
     }
   }
-  for (const [tx, ty, side] of window.LEVEL.SCORCH || []) bakeScorch(tx, ty, side);
+  const EMBERS = []; // smouldering soot spots, visible in the dark
+  for (const [tx, ty, side] of window.LEVEL.SCORCH || []) { bakeScorch(tx, ty, side); EMBERS.push({ x: side < 0 ? tx * 8 : tx * 8 + 8, y: ty * 8 + 4, side, seed: tx * 7 + ty }); }
   const HIDDEN = [];
   for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) if (L.grid[ty][tx] === 'h') HIDDEN.push({ tx, ty, t: 0 });
   function revealNear(x, y, r, t) {
@@ -462,7 +464,7 @@
 
   // ---------------------------------------------------------------- game state
   let state = 'title';
-  let p, abil = Phys.newAbil(), time = 0, misses = 0, shots = 0, bestH = 0, summitDone = false, tick = 0;
+  let p, abil = Phys.newAbil(), time = 0, misses = 0, shots = 0, bestH = 0, summitDone = false, heavenDone = false, tick = 0;
   let safe = null, deadT = 0;
   const cam = { x: 0, y: 0, px: 0, py: 0 };
   let shake = 0, flash = null;
@@ -516,7 +518,7 @@
       L.targets.forEach((t, i) => { if (t.ty > +at[2] + 1) Phys.openTarget(L, i); });
       placeAt(+at[1], +at[2]);
     }
-    time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false;
+    time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false; heavenDone = false;
     safe = { x: p.x, y: p.y }; deadT = 0;
     parts = []; tracers = []; toasts = [];
     snapCam(); resetScarf(); ghosts = []; relicOrder = [];
@@ -533,14 +535,14 @@
     const sp = s.safe;
     p = Phys.newPlayer(sp.x, sp.y, abil);
     time = s.time || 0; misses = s.misses || 0; shots = s.shots || 0; bestH = s.bestH || 0;
-    summitDone = !!s.summit;
+    summitDone = !!s.summit; heavenDone = !!s.heaven;
     safe = { x: sp.x, y: sp.y };
     snapCam(); resetScarf();
   }
   function saveGame() {
-    if (!p || state === 'title' || state === 'heaven') return;
+    if (!p || state === 'title') return;
     store.set(SAVE_KEY, {
-      safe, time, misses, shots, bestH, summit: summitDone, abil,
+      safe, time, misses, shots, bestH, summit: summitDone, heaven: heavenDone, abil,
       cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]),
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
@@ -563,6 +565,10 @@
   function updateFx() {
     ghosts = ghosts.filter((g) => --g.life > 0);
     for (const hdn of HIDDEN) if (hdn.t > 0) hdn.t--;
+    if (tick % 9 === 0 && EMBERS.length) { // thin smoke curling off the soot
+      const e = EMBERS[Math.floor(Math.random() * EMBERS.length)];
+      if (Math.abs(e.x - cam.x - VW / 2) < VW && Math.abs(e.y - cam.y - VH / 2) < VH) parts.push({ x: e.x - e.side * 2, y: e.y - 2, vx: -e.side * 0.08, vy: -0.25, g: -0.002, life: 60, col: '#5b616d' });
+    }
     if (p && !p.dead && p.grounded && Phys.tileAt(L, Math.floor((p.x + 3) / 8), Math.floor((p.y + C.PH + 1) / 8)) === 'h') revealNear(p.x + 3, p.y + C.PH + 4, 10, 24);
     if (tick % 12 === 0 && CRACKS.length) { // loose grit trickles from fractured panels
       const [tx, ty] = CRACKS[Math.floor(Math.random() * CRACKS.length)];
@@ -645,7 +651,7 @@
     }
     if (e.blast) { // pressed against the wall: louder, brighter, leaves soot
       const w = e.hits.find((h) => h.t === 'wall' || h.t === 'clank');
-      if (w) bakeScorch(Math.floor((w.x + w.dx) / 8), Math.floor(w.y / 8), w.dx > 0 ? -1 : 1, tick);
+      if (w) { const stx = Math.floor((w.x + w.dx) / 8), sty = Math.floor(w.y / 8), sd = w.dx > 0 ? -1 : 1; bakeScorch(stx, sty, sd, tick); EMBERS.push({ x: sd < 0 ? stx * 8 : stx * 8 + 8, y: sty * 8 + 4, side: sd, seed: tick }); }
       burst(flash.x, flash.y, 16, ['#ffb347', '#ffffff', '#ff5a1e'], 2.2, 0.04, 18);
       SFX.blast(); later(HAPTIC.blast);
       shake = Math.max(shake, 7);
@@ -956,7 +962,19 @@
     for (const q of parts) { ctx.fillStyle = q.col; ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); }
   }
   // drawn after the darkness: things that are themselves light
+  function drawEmbers() {
+    for (const e of EMBERS) {
+      if (Math.abs(e.x - cam.x - VW / 2) > VW || Math.abs(e.y - cam.y - VH / 2) > VH) continue;
+      for (let k = 0; k < 4; k++) {
+        const on = Math.sin(tick * (0.11 + k * 0.05) + e.seed * (k + 1)) > -0.1;
+        if (!on) continue;
+        ctx.fillStyle = k === 0 ? '#ffd27a' : k < 3 ? '#ff7a2a' : '#b8321a';
+        ctx.fillRect(e.x - e.side * (1 + (k % 2)) - (e.side > 0 ? 2 : 0), e.y - 4 + k * 2 + ((e.seed + k) % 2), k === 0 ? 2 : 1, k < 2 ? 2 : 1);
+      }
+    }
+  }
   function drawWorldFX() {
+    drawEmbers();
     for (const hdn of HIDDEN) {
       if (hdn.t <= 0) continue;
       const a = Math.min(1, hdn.t / 30), x = hdn.tx * 8, y = hdn.ty * 8;
@@ -996,6 +1014,7 @@
     for (const it of L.items) if (!it.got) add(it.x, it.y, 26, 0.9, '#ffd98a');
     for (const r of L.relics) if (!r.got) add(r.x, r.y, 12, 0.7, '#ff3fa4');
     for (const sg of L.signs) add(sg.x + 4, sg.y + 3, 16, 0.7, '#ffb347');
+    for (const e of EMBERS) add(e.x - e.side * 3, e.y, 22, 0.7 + 0.2 * Math.sin(tick * 0.2 + e.seed), '#ff7a2a');
     for (const t of L.targets) if (!t.hit) add(t.tx * 8 + 4, t.ty * 8 + 4, 14, tick % 60 < 40 ? 0.9 : 0.5, '#ff3040');
     add(L.flag.x + 4, L.flag.y + 3, 22, 0.8, '#ff3040');
     add(L.gate.x + 4, L.gate.y, 70, 1, '#fff4dc');
@@ -1136,7 +1155,7 @@
       signAlpha.set(s, a);
       if (a <= 0) continue;
       const [sx, sy] = toScreen(s.x + 4, s.y - 3);
-      bubble(SIGNS[s.id].split('\n'), sx, sy, a, '#3d8f99');
+      bubble((s.text || SIGNS[s.id]).split('\n'), sx, sy, a, '#3d8f99');
     }
     for (const t of toasts) {
       const [sx, sy] = toScreen(t.x, t.y);
@@ -1210,7 +1229,7 @@
     $('btnCont').disabled = !has;
     $('btnCont').classList.toggle('primary', has);
     $('btnNew').classList.toggle('primary', !has);
-    $('btnNew').textContent = '目覚める';
+    $('btnNew').textContent = 'はじめから';
     newArmed = false;
     const parts2 = [];
     if (best.summit) parts2.push('最上層 ' + fmtTime(best.summit));
@@ -1224,7 +1243,7 @@
     $('btnHaptics').hidden = !Haptics.supported;
   };
   $('btnNew').addEventListener('click', () => {
-    if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = '記録を捨てて、目覚める'; return; }
+    if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = '記録を消して、はじめから'; return; }
     audioUnlock(); store.del(SAVE_KEY); newGame(); play();
   });
   $('btnCont').addEventListener('click', () => {
@@ -1256,6 +1275,8 @@
     }, 1200);
   }
   function heaven() {
+    if (heavenDone) { toast('――外だ。', L.gate.x + 4, L.gate.y - 10, '#fff4dc', 60); return; }
+    heavenDone = true;
     SFX.win(); HAPTIC.heaven();
     burst(L.gate.x + 4, L.gate.y, 60, ['#ffffff', '#e6dcc4', '#6ff7ff'], 2.5, 0.02, 70);
     if (!best.heaven || time < best.heaven) { best.heaven = time; store.set(BEST_KEY, best); }
@@ -1264,7 +1285,7 @@
     setTimeout(() => {
       $('heavenStats').innerHTML = statsHTML(baseStats());
       $('heavenHint').textContent = rc < L.relics.length ? '記録片は、まだ下に眠っている。（' + rc + '/' + L.relics.length + '）' : '記録片は、すべて揃った。…それで、何が変わる？';
-      store.del(SAVE_KEY);
+      saveGame();
       state = 'heaven'; show('heaven');
     }, 1500);
   }
@@ -1274,9 +1295,8 @@
   $('btnLogsBack').addEventListener('click', () => show('pause'));
   $('btnResume').addEventListener('click', resume);
   $('btnTitle').addEventListener('click', toTitle);
-  $('btnClearTitle').addEventListener('click', toTitle);
   $('btnExplore').addEventListener('click', play);
-  $('btnHeavenTitle').addEventListener('click', () => { state = 'title'; refreshTitle(); show('title'); });
+  $('btnHeavenTitle').addEventListener('click', play);
   $('btnSound').addEventListener('click', () => { prefs.sound = !prefs.sound; store.set(PREF_KEY, prefs); syncSound(); });
   $('btnHaptics').addEventListener('click', () => { prefs.haptics = !prefs.haptics; store.set(PREF_KEY, prefs); syncSound(); if (prefs.haptics) HAPTIC.item(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') pause(); });
