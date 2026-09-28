@@ -21,7 +21,8 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
-    CHARGE_MS: 750,    // hold the drag at full power this long (with a full magazine of 2+) to charge
+    CHARGE_WAIT: 1500, // ms held at full power before charging starts (long enough to never happen by accident)
+    CHARGE_MS: 1200,   // ms of charging (the red ring) until the shot is charged
     CHARGE_BOOST: 0.2, // extra recoil per extra round spent in a charged shot
     PLATE_OUT: 2,      // rounds a charged shot needs to shatter armor plates (V)
     CORE_OUT: 3,       // ... and the superstructure's core (with breaker + magnum): the whole magazine at max
@@ -53,7 +54,7 @@
   //        V armor plate: only a charged shot (the whole magazine at once, 2+ rounds) shatters it (and the plates joined to it)
   //        Y superstructure (indestructible shell)   Z its core: only a maximum-output shot breaks it
   //          (charged, 3 rounds, breaker + magnum); then the whole shell (every Y and Z) collapses
-  // Charged shot: hold the drag at full power with a full magazine; release fires every round at once.
+  // Charged shot: hold the drag at full power (long); release fires every round left in the magazine at once.
   const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1, Y: 1, Z: 1, V: 1 };
   const isSolid = (c) => SOLID[c] === 1;
   const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z' || c === 'V';
@@ -137,7 +138,7 @@
     return { x, y, vx: 0, vy: 0, abil: a, ammo: a.ammo + 1, cd: 0, grounded: false, onIce: false, dead: false, won: false, heaven: false };
   }
   const maxAmmo = (p) => p.abil.ammo + 1; // one ground shot + air shots
-  const canCharge = (p) => maxAmmo(p) >= 2 && p.ammo >= maxAmmo(p);
+  const canCharge = (p) => maxAmmo(p) >= 2 && p.ammo >= 1; // any rounds left, once you own a magazine
   // the plate hit and every plate joined to it
   function plateCluster(L, tx, ty) {
     const out = [], seen = new Set([ty * L.w + tx]), st = [[tx, ty]];
@@ -278,8 +279,9 @@
 
     if (inp && inp.fire && p.cd <= 0 && p.ammo > 0) {
       const { dx, dy } = inp.fire;
-      // charged: the whole magazine in one shot (only when it is full and holds 2+ rounds)
-      const out = inp.fire.charge && canCharge(p) ? p.ammo : 1;
+      // charged: every round left in the magazine in one shot
+      const charged = !!inp.fire.charge && canCharge(p);
+      const out = charged ? p.ammo : 1;
       p.ammo -= out;
       p.cd = C.COOLDOWN;
       const b = fireBullet(L, p, dx, dy, dry, out);
@@ -287,7 +289,7 @@
       p.vx = -dx * k + p.vx * C.KEEP;
       p.vy = -dy * k + p.vy * C.KEEP;
       p.grounded = false;
-      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits, blast: b.blast, out });
+      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits, blast: b.blast, out, charged });
     }
 
     if (p.grounded) {

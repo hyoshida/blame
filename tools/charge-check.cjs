@@ -22,4 +22,6 @@ const full = { ammo: 2, breaker: true, magnum: true };
 test(61, 35, full, { dx: 0, dy: -1, pow: 1, charge: true }, 'core max:', 'collapse');
 test(61, 35, { ...full, ammo: 1 }, { dx: 0, dy: -1, pow: 1, charge: true }, 'core 2 rounds:', 'clank');
 test(61, 35, full, { dx: 0, dy: -1, pow: 1 }, 'core single:', 'clank');
+// after a jump the magazine is not full, but a charge still spends what is left
+{ const p = P.newPlayer(0, 0, Object.assign(P.newAbil(), { ammo: 2 })); p.ammo = 2; const ok = P.canCharge(p); p.ammo = 0; const ok0 = !P.canCharge(p); if (!ok || !ok0) bad++; console.log(ok && ok0 ? 'ok  ' : 'FAIL', 'partial magazine can charge'); }
 process.exit(bad ? 1 : 0);

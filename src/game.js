@@ -398,7 +398,33 @@
     const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
     s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.setValueAtTime(fc, t); f.frequency.exponentialRampToValueAtTime(200, t + d);
     g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    s.loop = true;
     s.connect(f).connect(g).connect(actx.destination); s.start(t); s.stop(t + d);
+  }
+  // rising whine while a charge builds; returns a handle whose stop() releases it
+  function chargeLoop(rounds, heavy) {
+    if (!actx || !prefs.sound) return null;
+    const t = actx.currentTime, D = C.CHARGE_MS / 1000, base = 70 + rounds * 18;
+    const out = actx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.09, t + 0.15);
+    const o1 = actx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.setValueAtTime(base, t); o1.frequency.exponentialRampToValueAtTime(base * 4, t + D);
+    const o2 = actx.createOscillator(); o2.type = 'square'; o2.frequency.setValueAtTime(base * 2.01, t); o2.frequency.exponentialRampToValueAtTime(base * 8.04, t + D);
+    const g2 = actx.createGain(); g2.gain.value = 0.35;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(400, t); lp.frequency.exponentialRampToValueAtTime(heavy ? 5200 : 3200, t + D);
+    // tremolo that speeds up: the charge "throbs" faster as it fills
+    const trem = actx.createGain(); trem.gain.value = 0.6;
+    const lfo = actx.createOscillator(); lfo.frequency.setValueAtTime(5, t); lfo.frequency.exponentialRampToValueAtTime(heavy ? 34 : 24, t + D);
+    const lfoG = actx.createGain(); lfoG.gain.value = 0.4;
+    lfo.connect(lfoG).connect(trem.gain);
+    o1.connect(lp); o2.connect(g2).connect(lp); lp.connect(trem).connect(out).connect(actx.destination);
+    let sub = null;
+    if (heavy) { sub = actx.createOscillator(); sub.type = 'sine'; sub.frequency.setValueAtTime(38, t); sub.frequency.linearRampToValueAtTime(55, t + D); const sg = actx.createGain(); sg.gain.value = 0.9; sub.connect(sg).connect(out); sub.start(t); }
+    o1.start(t); o2.start(t); lfo.start(t);
+    let held = false;
+    return {
+      // charged: settle into a steady, quieter throb until release
+      hold() { if (held) return; held = true; const n = actx.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(out.gain.value, n); out.gain.linearRampToValueAtTime(0.045, n + 0.2); o1.frequency.cancelScheduledValues(n); o1.frequency.setValueAtTime(base * 4, n); o2.frequency.cancelScheduledValues(n); o2.frequency.setValueAtTime(base * 8.04, n); },
+      stop() { const n = actx.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(Math.max(out.gain.value, 0.0001), n); out.gain.exponentialRampToValueAtTime(0.0001, n + 0.06); for (const o of [o1, o2, lfo, sub]) if (o) o.stop(n + 0.08); },
+    };
   }
   // low hum of the structure + wind through its shafts
   let amb = null;
@@ -440,8 +466,23 @@
     relay() { [392, 587, 784].forEach((f, i) => tone({ f, d: 0.16, type: 'triangle', v: 0.09, delay: i * 0.08 })); },
     collapse() { noise(1.8, 0.7, 1800); tone({ f: 55, f2: 20, d: 2.2, type: 'sawtooth', v: 0.22 }); tone({ f: 82, f2: 30, d: 1.8, type: 'triangle', v: 0.2, delay: 0.3 }); },
     blast() { noise(0.35, 0.55, 3800); tone({ f: 70, f2: 30, d: 0.3, type: 'sawtooth', v: 0.16 }); },
-    charged() { [220, 330, 440, 660].forEach((f, i) => tone({ f, d: 0.07, type: 'square', v: 0.05, delay: i * 0.04 })); },
-    overdrive() { noise(0.5, 0.7, 2600); tone({ f: 60, f2: 22, d: 0.5, type: 'sawtooth', v: 0.22 }); tone({ f: 1400, f2: 300, d: 0.25, type: 'square', v: 0.05 }); },
+    charged(heavy) { (heavy ? [220, 330, 440, 660, 880] : [220, 330, 440, 660]).forEach((f, i) => tone({ f, d: 0.08, type: 'square', v: 0.05, delay: i * 0.04 })); },
+    // a charged shot: heavier with every round; the max-output shot is a structure-breaking boom
+    overdrive(out, max) {
+      if (max) {
+        noise(1.6, 0.9, 5200);
+        tone({ f: 48, f2: 16, d: 1.6, type: 'sine', v: 0.5 });
+        tone({ f: 90, f2: 24, d: 1.1, type: 'sawtooth', v: 0.26 });
+        tone({ f: 2400, f2: 160, d: 0.5, type: 'square', v: 0.06 });
+        tone({ f: 62, f2: 20, d: 1.2, type: 'triangle', v: 0.3, delay: 0.09 });
+        tone({ f: 1320, f2: 1250, d: 0.9, type: 'triangle', v: 0.05, delay: 0.05 }); // metal ring
+        tone({ f: 1870, f2: 1760, d: 0.7, type: 'triangle', v: 0.035, delay: 0.05 });
+        return;
+      }
+      noise(0.35 + out * 0.15, 0.5 + out * 0.1, 2200 + out * 600);
+      tone({ f: 70 - out * 5, f2: 24, d: 0.35 + out * 0.12, type: 'sawtooth', v: 0.16 + out * 0.03 });
+      tone({ f: 1100 + out * 200, f2: 260, d: 0.22, type: 'square', v: 0.045 });
+    },
     clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
     door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
     item() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.07, delay: i * 0.07 })); },
@@ -492,7 +533,8 @@
   const HAPTIC = {
     aimFull: () => Haptics.play(8, 1),
     charged: () => Haptics.play([12, 40, 12, 40, 30], 3),
-    overdrive: () => Haptics.play([70, 20, 50, 20, 30], 3),
+    chargeTick: (k) => Haptics.play(4 + k * 2, 0),
+    overdrive: (out, max) => Haptics.play(max ? [160, 30, 90, 30, 60, 40, 120] : [50 + out * 15, 20, 30 + out * 10, 20, 30], 3),
     shot: (pow, magnum) => Haptics.play(Math.round(10 + pow * 16 + (magnum ? 12 : 0)), 1),
     empty: () => Haptics.play([4, 40, 4], 1),
     land: (v) => { if (v > 3.6) Haptics.play(24, 1); else if (v > 2.2) Haptics.play(10, 0); },
@@ -693,7 +735,7 @@
     if (v) { aim = { x: v.dx, y: v.dy }; pow = v.pow; }
     const full = !!v && v.pow >= 0.999;
     if (full && !stick.full) { HAPTIC.aimFull(); stick.fullAt = performance.now(); }
-    if (!full) { stick.fullAt = 0; stick.charged = false; }
+    if (!full) { stick.fullAt = 0; stick.charged = false; stopChargeSnd(); }
     stick.full = full;
   });
   function endStick(e, cancel) {
@@ -701,9 +743,10 @@
     const v = stickVec();
     const charge = chargeLevel() >= 1;
     stick = null;
+    stopChargeSnd();
     if (!cancel && v && state === 'play') {
       pendingFire = { dx: v.dx, dy: v.dy, pow: v.pow, charge, ttl: 6 };
-      if (p && !p.dead) { if (charge) HAPTIC.overdrive(); else if (p.ammo > 0) HAPTIC.shot(v.pow, abil.magnum); else HAPTIC.empty(); }
+      if (p && !p.dead) { if (charge) HAPTIC.overdrive(p.ammo, isMax(p.ammo)); else if (p.ammo > 0) HAPTIC.shot(v.pow, abil.magnum); else HAPTIC.empty(); }
     }
   }
   cv.addEventListener('pointerup', (e) => endStick(e, false));
@@ -715,18 +758,42 @@
       e.preventDefault();
     }
   });
-  // charged shot: held at full power with a full magazine of 2+ rounds for CHARGE_MS
+  // charged shot: held at full power for CHARGE_WAIT, then CHARGE_MS of charging (any rounds left, magazine owned)
+  const isMax = (out) => out >= C.CORE_OUT && abil.breaker && abil.magnum;
   function chargeLevel() {
     if (!stick || !stick.fullAt || !p || p.dead || !Phys.canCharge(p)) return 0;
-    return clamp((performance.now() - stick.fullAt) / C.CHARGE_MS, 0, 1);
+    const t = performance.now() - stick.fullAt - C.CHARGE_WAIT;
+    return t <= 0 ? 0 : clamp(t / C.CHARGE_MS, 0.001, 1);
   }
+  let chargeSnd = null;
+  function stopChargeSnd() { if (chargeSnd) { chargeSnd.stop(); chargeSnd = null; } }
   function updateCharge() {
-    if (!stick) return;
-    if (stick.full && !Phys.canCharge(p)) stick.fullAt = 0; // the magazine is not full: start over once it is
+    if (!stick) { stopChargeSnd(); return; }
+    if (stick.full && !Phys.canCharge(p)) { stick.fullAt = 0; stick.charged = false; stick.step = 0; stopChargeSnd(); } // out of rounds: start over once refilled
     else if (stick.full && !stick.fullAt) stick.fullAt = performance.now();
-    const c = chargeLevel() >= 1;
-    if (c && !stick.charged) { SFX.charged(); HAPTIC.charged(); }
+    const lv = chargeLevel();
+    if (lv > 0 && !chargeSnd && !stick.charged) chargeSnd = chargeLoop(p.ammo, isMax(p.ammo));
+    if (lv > 0 && lv < 1) {
+      const k = Math.floor(lv * 8);
+      if (k !== stick.step) { stick.step = k; HAPTIC.chargeTick(k); }
+      // sparks drawn in toward the player
+      const n = 1 + Math.floor(lv * 3), cx = p.x + 3, cy = p.y + 4, cols = chargeCols(p.ammo);
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * 6.283, d = 14 + Math.random() * 10;
+        parts.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, vx: -Math.cos(a) * d / 12, vy: -Math.sin(a) * d / 12, g: 0, life: 12, col: cols[i % cols.length] });
+      }
+    }
+    const c = lv >= 1;
+    if (c && !stick.charged) { SFX.charged(isMax(p.ammo)); HAPTIC.charged(); if (chargeSnd) chargeSnd.hold(); burst(p.x + 3, p.y + 4, 14, chargeCols(p.ammo), 1.4, 0, 14); }
     stick.charged = c;
+  }
+  // colours of a charged shot: red, hotter with breaker (amber) and magnum (white); deeper with more rounds
+  function chargeCols(out) {
+    const c = [out >= 3 ? '#ff004d' : out >= 2 ? '#ff3040' : '#d8303a'];
+    if (abil.breaker) c.push('#ffb347');
+    if (abil.magnum) c.push('#ffffff');
+    if (isMax(out)) c.push('#ffe0e0');
+    return c;
   }
   const aiming = () => state === 'play' && !!stickVec() && !p.dead;
 
@@ -737,7 +804,8 @@
     const s0 = e.segs[0];
     const d0 = Math.hypot(s0.x1 - s0.x0, s0.y1 - s0.y0);
     const mz = Math.min(7, d0);
-    tracers.push({ segs: e.segs, skip: mz, life: 6 });
+    if (e.charged) tracers.push({ segs: e.segs, skip: 2, life: isMax(e.out) ? 16 : 10 + e.out * 2, max: isMax(e.out), w: isMax(e.out) ? 5 : 1 + e.out, cols: chargeCols(e.out) });
+    else tracers.push({ segs: e.segs, skip: mz, life: 6 });
     flash = { x: cx + e.dx * mz, y: cy + e.dy * mz, life: e.blast ? 6 : 3, big: e.blast };
     // the flash lights up hidden walkways for a moment
     revealNear(flash.x, flash.y, e.blast ? 80 : 64, 70);
@@ -752,11 +820,18 @@
       SFX.blast(); later(HAPTIC.blast);
       shake = Math.max(shake, 7);
     }
-    if (e.out >= 2) { // the whole magazine at once
-      burst(flash.x, flash.y, 26, ['#ff3040', '#ffffff', '#ffb347', '#6ff7ff'], 2.8, 0.03, 22);
-      flash.life = 8; flash.big = true;
-      toast('全弾', cx, cy - 12, '#ff3040', 50);
-      SFX.overdrive(); shake = Math.max(shake, 8 + e.out * 2);
+    if (e.charged) { // every round left, at once
+      const max = isMax(e.out), cols = chargeCols(e.out);
+      burst(flash.x, flash.y, 14 + e.out * 8 + (max ? 20 : 0), cols, 2 + e.out * 0.5 + (max ? 1.2 : 0), 0.03, 22);
+      flash.life = 8 + e.out * 2; flash.big = true; flash.charge = cols[0];
+      toast(max ? '最大出力' : e.out >= 2 ? '全弾（' + e.out + '）' : '全弾', cx, cy - 12, max ? '#ffe0e0' : '#ff3040', 60);
+      SFX.overdrive(e.out, max); shake = Math.max(shake, 6 + e.out * 3 + (max ? 8 : 0));
+      if (max) whiteout = Math.max(whiteout, 0.35);
+      // embers shed along the whole path
+      for (const sg of e.segs) {
+        const d = Math.hypot(sg.x1 - sg.x0, sg.y1 - sg.y0);
+        for (let i = 6; i < d; i += max ? 3 : 7) parts.push({ x: sg.x0 + (sg.x1 - sg.x0) * i / d, y: sg.y0 + (sg.y1 - sg.y0) * i / d, vx: rnd(-0.4, 0.4), vy: rnd(-0.5, 0.2), g: 0.02, life: rnd(14, 30 + e.out * 6), col: cols[Math.floor(Math.random() * cols.length)] });
+      }
       revealNear(cx, cy, 90, 70);
     }
     for (const h of e.hits) {
@@ -949,6 +1024,18 @@
       ctx.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
     }
   }
+  function thickLine(segs, w, col, skip = 0) {
+    ctx.fillStyle = col;
+    const o = Math.floor(w / 2);
+    let acc = 0;
+    for (const s of segs) {
+      const d = Math.hypot(s.x1 - s.x0, s.y1 - s.y0) || 1;
+      for (let i = 0; i <= d; i += 1) {
+        if (++acc < skip) continue;
+        ctx.fillRect(Math.round(s.x0 + (s.x1 - s.x0) * i / d) - o, Math.round(s.y0 + (s.y1 - s.y0) * i / d) - o, w, w);
+      }
+    }
+  }
   function dotted(segs, maxLen, col, stepPx, skip = 0) {
     ctx.fillStyle = col;
     let acc = 0;
@@ -968,7 +1055,8 @@
     const charge = chargeLevel() >= 1;
     const bullet = Phys.fireBullet(L, p, v.dx, v.dy, true, charge ? p.ammo : 1);
     ctx.globalAlpha = 0.6;
-    dotted(bullet.segs, 72, '#fff1e8', 3, 9);
+    if (charge) { ctx.globalAlpha = Math.floor(tick / 4) % 2 ? 0.75 : 0.5; thickLine(bullet.segs, isMax(p.ammo) ? 3 : 2, chargeCols(p.ammo)[0], 9); }
+    else dotted(bullet.segs, 72, '#fff1e8', 3, 9);
     ctx.globalAlpha = 1;
     // light up whatever this shot would hit (crystals refill, targets open doors)
     const blink = Math.floor(tick / 4) % 2 === 0;
@@ -1161,7 +1249,15 @@
       if (!same(1)) ctx.fillRect(x + 7, y, 1, 5);
       ctx.globalAlpha = 1;
     }
-    for (const t of tracers) dotted(t.segs, 999, t.life > 4 ? '#ffffff' : t.life > 2 ? '#8ff8ff' : '#3fd8ff', 1, t.skip);
+    for (const t of tracers) {
+      if (!t.w) { dotted(t.segs, 999, t.life > 4 ? '#ffffff' : t.life > 2 ? '#8ff8ff' : '#3fd8ff', 1, t.skip); continue; }
+      // charged: a thick red beam that thins out as it fades; hot core from breaker/magnum
+      const w = Math.max(1, Math.round(t.w * Math.min(1, t.life / 8)));
+      if (t.max) { ctx.globalAlpha = 0.35; thickLine(t.segs, w + 4, '#ff004d', t.skip); ctx.globalAlpha = 1; }
+      thickLine(t.segs, w, t.cols[0], t.skip);
+      if (t.cols.length > 1 && w >= 2) thickLine(t.segs, w - 1 - (w > 3 ? 1 : 0), t.cols[1], t.skip);
+      if (t.cols.length > 2 && w >= 3) thickLine(t.segs, 1, t.life > 4 ? t.cols[2] : t.cols[1], t.skip);
+    }
     if (flash) {
       ctx.fillStyle = '#8ff8ff'; ctx.fillRect(Math.round(flash.x) - 1, Math.round(flash.y) - 1, 3, 3);
       ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(flash.x), Math.round(flash.y), 1, 1);
@@ -1180,8 +1276,14 @@
     const out = [];
     const add = (x, y, r, a, col) => { if (Math.abs(x - cam.x - VW / 2) < VW / 2 + r && Math.abs(y - cam.y - VH / 2) < VH / 2 + r) out.push({ x, y, r, a, col }); };
     if (p && !p.dead) add(p.x + 3, p.y + 1, 38, 0.9, LAMP[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1]);
-    if (flash) add(flash.x, flash.y, flash.big ? 90 : 60, 1, flash.big ? '#ffb347' : '#8ff8ff');
-    for (const t of tracers) { const s = t.segs[t.segs.length - 1]; add(s.x1, s.y1, 16, t.life / 6, '#8ff8ff'); }
+    if (flash) add(flash.x, flash.y, flash.big ? 90 : 60, 1, flash.charge || (flash.big ? '#ffb347' : '#8ff8ff'));
+    for (const t of tracers) {
+      const s = t.segs[t.segs.length - 1];
+      if (!t.w) { add(s.x1, s.y1, 16, t.life / 6, '#8ff8ff'); continue; }
+      const a = Math.min(1, t.life / 8);
+      for (const sg of t.segs) { const d = Math.hypot(sg.x1 - sg.x0, sg.y1 - sg.y0); for (let i = 0; i <= d; i += 20) add(sg.x0 + (sg.x1 - sg.x0) * i / d, sg.y0 + (sg.y1 - sg.y0) * i / d, 12 + t.w * 4, a, t.cols[0]); }
+      add(s.x1, s.y1, t.max ? 60 : 30, a, t.cols[0]);
+    }
     for (const l of LAMPS) if (lampOn(l)) add(l.x, l.y + (l.kind === 'hang' ? 4 : l.kind === 'post' ? -6 : 3), l.r, 0.85, l.col);
     for (const c of L.crystals) if (c.active) add(c.x, c.y, 20, 0.8, '#6ff7ff');
     for (const it of L.items) if (!it.got) add(it.x, it.y, 26, 0.9, '#ffd98a');
@@ -1271,9 +1373,10 @@
     if (ch > 0) { // charge ring: fills while held at full power; blinks with a pip per round once charged
       const done = ch >= 1, blink = Math.floor(tick / 3) % 2 === 0;
       ctx.globalAlpha = 0.95;
-      ctx.strokeStyle = done ? (blink ? '#ffffff' : '#ff3040') : '#ff3040'; ctx.lineWidth = done ? 2 : 1;
+      const rc = chargeCols(p.ammo)[0];
+      ctx.strokeStyle = done ? (blink ? '#ffffff' : rc) : rc; ctx.lineWidth = done ? (isMax(p.ammo) ? 3 : 2) : 1;
       ctx.beginPath(); ctx.arc(ox + 0.5, oy + 0.5, STICK_FULL + 4, -Math.PI / 2, -Math.PI / 2 + ch * 6.283); ctx.stroke();
-      if (done) for (let i = 0; i < p.ammo; i++) { ctx.fillStyle = '#ff3040'; ctx.fillRect(ox - (p.ammo * 4 - 1) / 2 + i * 4 | 0, oy - STICK_FULL - 10, 3, 3); }
+      if (done) for (let i = 0; i < p.ammo; i++) { ctx.fillStyle = rc; ctx.fillRect(ox - (p.ammo * 4 - 1) / 2 + i * 4 | 0, oy - STICK_FULL - 10, 3, 3); }
     }
     ctx.globalAlpha = 1;
   }
@@ -1366,6 +1469,7 @@
   // ---------------------------------------------------------------- screens
   const scr = { title: $('scrTitle'), pause: $('scrPause'), clear: $('scrClear'), heaven: $('scrHeaven'), item: $('scrItem'), logs: $('scrLogs'), warp: $('scrWarp'), debug: $('scrDebug') };
   function show(name) {
+    stopChargeSnd();
     for (const k in scr) scr[k].hidden = k !== name;
     $('btnPause').hidden = name !== null;
   }
