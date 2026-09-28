@@ -24,7 +24,13 @@
   .btn-pause { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 40px; height: 40px; border: 1px solid #5b616d; background: rgba(7,8,11,.6); color: var(--snow); font: inherit; font-size: 16px; line-height: 1; z-index: 5; }
   .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: rgba(7,8,11,.86); z-index: 10; overflow-y: auto; touch-action: auto; }
   .panel { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; text-align: center; }
-  .logo { margin: 0; font-size: 40px; line-height: 1.05; letter-spacing: .12em; color: var(--hood); text-shadow: 3px 3px 0 var(--danger); text-wrap: balance; }
+  .logo { margin: 0; font-size: 40px; line-height: 1.05; letter-spacing: .12em; color: var(--hood); text-shadow: -2px 0 rgba(255,48,64,.85), 2px 0 rgba(63,216,255,.7); text-wrap: balance; animation: flicker 6s infinite steps(1); }
+  @keyframes flicker { 0%, 100% { opacity: 1; } 91% { opacity: 1; } 92% { opacity: .35; transform: translateX(2px); } 93% { opacity: 1; transform: none; } 96% { opacity: .7; } 97% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
+  .overlay::before { content: ''; position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px); }
+  .overlay::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.7) 100%); }
+  .panel { position: relative; z-index: 1; }
+  .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--danger), transparent); border: 0; margin: 0; }
   .logo.heaven { color: #fff8e8; text-shadow: 0 0 12px #e6dcc4, 3px 3px 0 #3d8f99; }
   .sub { margin: 0; color: var(--dim); font-size: 13px; letter-spacing: .2em; }
   .howto { margin: 0; padding: 12px 14px; list-style: none; text-align: left; border: 1px solid #3d8f99; background: rgba(10,12,16,.8); display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.5; }
@@ -51,57 +57,58 @@
   <div class="panel">
     <div>
       <h1 class="logo">RECOIL<br>CLIMB</h1>
-      <p class="sub">果てのない構造体を、反動だけで上へ。</p>
+      <p class="sub">果ては、あるのか。</p>
     </div>
+    <hr class="rule">
     <ul class="howto">
-      <li>画面のどこでも<b>ドラッグして離す</b>と、その向きに撃つ。</li>
-      <li>撃つと<b>反対側へ飛ぶ</b>。下に撃てば上へ。</li>
-      <li>引っぱる長さで強さが変わる。狙っている間は時間がゆっくりになる。</li>
-      <li>はじめは空中で撃てない。<b>光る道具</b>を拾うと、できることが増える。</li>
-      <li>弾は着地か<b style="color:var(--moss)">青白く光る結晶</b>で回復。鋭い破片に触れると、直前の足場に戻る。</li>
+      <li>どこでもいい。<b>引いて、放せ</b>。その向きに撃つ。</li>
+      <li>反動が、お前を<b>反対へ</b>運ぶ。足もとを撃てば、上へ。</li>
+      <li>深く引くほど、強く。狙う間、時は遅れる。</li>
+      <li>宙ではまだ撃てない。<b>拾ったもの</b>が、お前を変える。</li>
+      <li>弾は、着地か<b style="color:var(--moss)">青い光</b>で満ちる。破片に触れれば、少し前へ戻される。</li>
     </ul>
     <div class="row">
-      <button class="act" id="btnNew">はじめから</button>
-      <button class="act primary" id="btnCont">つづきから</button>
+      <button class="act" id="btnNew">目覚める</button>
+      <button class="act primary" id="btnCont">続ける</button>
     </div>
-    <p class="small" id="bestLine">PCはマウスでドラッグ。Esc でポーズ。</p>
+    <p class="small" id="bestLine">PC：マウスで引いて放す　Esc：静止</p>
   </div>
 </div>
 
 <div class="overlay" id="scrPause" hidden>
   <div class="panel">
-    <h2 class="logo" style="font-size:28px">PAUSE</h2>
+    <h2 class="logo" style="font-size:28px">――静止</h2>
     <dl class="stats" id="pauseStats"></dl>
     <p class="small" id="pauseAbil"></p>
     <div class="row">
-      <button class="act" id="btnSound">音: ON</button>
-      <button class="act" id="btnHaptics">振動: ON</button>
+      <button class="act" id="btnSound">音　ON</button>
+      <button class="act" id="btnHaptics">振動　ON</button>
     </div>
-    <button class="act" id="btnTitle">タイトルへ</button>
-    <button class="act primary" id="btnResume">つづける</button>
+    <button class="act" id="btnTitle">離れる</button>
+    <button class="act primary" id="btnResume">戻る</button>
   </div>
 </div>
 
 <div class="overlay" id="scrItem" hidden>
   <div class="panel">
-    <p class="sub">新しい力を手に入れた</p>
+    <p class="sub">――何かを、拾った。</p>
     <canvas id="itemIcon" width="64" height="64" style="width:96px;height:96px;margin:0 auto;image-rendering:pixelated;border:1px solid #3d8f99;background:#0a0c10"></canvas>
     <h2 class="logo" style="font-size:30px" id="itemName"></h2>
     <p style="margin:0;font-size:16px;line-height:1.6" id="itemDesc"></p>
     <p class="small" id="itemAbil"></p>
-    <button class="act primary" id="btnItemOk">OK</button>
+    <button class="act primary" id="btnItemOk">受け入れる</button>
   </div>
 </div>
 
 <div class="overlay" id="scrClear" hidden>
   <div class="panel">
-    <h2 class="logo" style="font-size:34px">SUMMIT!</h2>
-    <p class="sub">最上層に到達した。</p>
+    <h2 class="logo" style="font-size:30px">UPPERMOST</h2>
+    <p class="sub">最上層。…ここで、終わりのはずだった。</p>
     <dl class="stats" id="clearStats"></dl>
-    <p class="hint">天井の向こうから、光が漏れている。</p>
+    <p class="hint">天井の亀裂から、見たことのない光が漏れている。</p>
     <div class="row">
-      <button class="act" id="btnClearTitle">タイトルへ</button>
-      <button class="act primary" id="btnExplore">探索をつづける</button>
+      <button class="act" id="btnClearTitle">離れる</button>
+      <button class="act primary" id="btnExplore">上へ</button>
     </div>
   </div>
 </div>
@@ -109,10 +116,10 @@
 <div class="overlay" id="scrHeaven" hidden>
   <div class="panel">
     <h2 class="logo heaven" style="font-size:34px">OUTSIDE</h2>
-    <p class="sub">構造体の外に出た。はじめて見る光だった。</p>
+    <p class="sub">外だ。誰も、ここまでは来なかった。</p>
     <dl class="stats" id="heavenStats"></dl>
     <p class="hint" id="heavenHint"></p>
-    <button class="act primary" id="btnHeavenTitle">タイトルへ</button>
+    <button class="act primary" id="btnHeavenTitle">眠る</button>
   </div>
 </div>
 <!--SCRIPTS-->

@@ -25,10 +25,10 @@
 
   // Ability items:  A +1 air shot   B breaker rounds (cracks)   K piercing rounds (glass)   M magnum (stronger recoil)
   const ITEMS = {
-    A: { name: '予備弾倉', desc: '空中で撃てる弾が1発増えた。' },
-    B: { name: '砕岩弾', desc: 'ひび割れた岩を撃ち砕けるようになった。' },
-    K: { name: '貫通弾', desc: '弾がガラスを通り抜けるようになった。' },
-    M: { name: '強装弾', desc: '反動が強くなり、より高く飛べるようになった。' },
+    A: { name: '予備弾倉', desc: '宙で、もう一度撃てる。' },
+    B: { name: '砕岩弾', desc: '脆くなった構造を、砕ける。' },
+    K: { name: '貫通弾', desc: 'ガラスの向こうへ、届く。' },
+    M: { name: '強装弾', desc: '反動が、身体をもっと遠くへ運ぶ。' },
   };
   const newAbil = () => ({ ammo: 0, breaker: false, pierce: false, magnum: false });
   function grantItem(abil, type) {

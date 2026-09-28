@@ -5,7 +5,8 @@
   const $ = (id) => document.getElementById(id);
   const VW = 144;
   let VH = 256, scale = 2, dpr = 1;
-  const cv = $('game'), ctx = cv.getContext('2d');
+  const cv = $('game'), mainCtx = cv.getContext('2d');
+  let ctx = mainCtx;
   const ui = $('ui'), uctx = ui.getContext('2d');
   const L = Phys.makeLevel(window.LEVEL.ROWS);
   const SIGNS = window.LEVEL.SIGNS;
@@ -73,15 +74,24 @@
     rows.forEach((r, y) => [...r].forEach((ch, x) => { if (map[ch]) { g.fillStyle = map[ch]; g.fillRect(x, y, 1, 1); } }));
     return c;
   }
-  // Player: an original hooded wanderer. The visor lamp shows ammo (cyan full / amber some / dark none).
-  const BODY = ['..kkkk..', '.kkkkkk.', '.kvvvkk.', '.kssskk.', '.hrrrrh.', '.hcccch.'];
-  const LEGS = { idle: ['..c..c..', '..n..n..'], air: ['..cccc..', '.n....n.'], slide: ['.cc..cc.', 'nn....nn'] };
-  const LAMP = ['#3e434b', '#ffb347', '#8ff8ff'];
+  // Player: an original hooded wanderer (8x10). Glowing visor, pale jacket; a long scarf is simulated separately.
+  // The visor colour shows ammo (cyan full / amber some / dark none).
+  const BODY = ['...kk...', '..kkkk..', '.kkvvvk.', '.kksssk.', '..rrrr..', '.hjjjjh.', '.hjwwjh.', '..jjjj..'];
+  const LEGS = { idle: ['..d..d..', '..n..n..'], air: ['..dddd..', '.n....n.'], slide: ['.dd..dd.', 'nn....nn'] };
+  const LAMP = ['#2e3238', '#ffb347', '#8ff8ff'];
+  const PAL = { k: '#23262d', s: '#0b0c0f', r: '#e0303a', h: '#1a1c21', j: '#c9ced6', w: '#6ff7ff', d: '#2a2e36', n: '#101216' };
   const PSPR = LAMP.map((v) => {
     const out = {};
-    for (const k in LEGS) out[k] = sprite(BODY.concat(LEGS[k]), { k: '#8a909a', v, s: '#121418', r: '#d0343f', c: '#2a2e36', h: '#5b616d', n: '#1a1d22' });
+    for (const k in LEGS) out[k] = sprite(BODY.concat(LEGS[k]), Object.assign({}, PAL, { v }));
     return out;
   });
+  function tint(img, col) {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height);
+    return c;
+  }
+  const GHOST = {};
+  for (const k in LEGS) GHOST[k] = tint(PSPR[2][k], '#3fd8ff');
   // energy cell (refill) and record shard (collectible)
   const CRYSTAL = sprite(['..fff..', '.fwccf.', '.fwccf.', '.fcccf.', '.fcccf.', '.fcccf.', '..fff..'], { f: '#4a5864', w: '#ffffff', c: '#6ff7ff' });
   const CRYSTAL_OFF = sprite(['..fff..', '.fdddf.', '.fdddf.', '.fdddf.', '.fdddf.', '.fdddf.', '..fff..'], { f: '#343b43', d: '#141a1f' });
@@ -117,12 +127,14 @@
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
         const wx = bx + x, wy = by + y, h = hash(wx, wy);
         let col;
-        if (ch === '=') { // slick coolant-coated steel
-          if (T && y === 0) col = '#c8d8e2';
-          else if (B && y === 7) col = '#26323a';
-          else if ((Lf && x === 0) || (R && x === 7)) col = '#7d93a2';
-          else if ((x + y) % 7 === 0) col = '#7d93a2';
-          else col = y < 3 ? '#56697a' : '#44545f';
+        if (ch === '=') { // wet black deck plating: slippery, reflects the neon
+          if (T && y === 0) col = (wx % 5 === 0) ? '#ff3fa4' : '#6ff7ff';
+          else if (T && y === 1) col = '#1d3a44';
+          else if (B && y === 7) col = '#050608';
+          else if ((Lf && x === 0) || (R && x === 7)) col = '#1a2027';
+          else if ((wx - wy) % 9 === 0 && y < 6) col = '#24495a';
+          else if ((wx - wy) % 9 === 1 && y < 5) col = '#16303b';
+          else col = h < 0.03 ? '#4a1d3a' : '#0e1217';
         } else if (deep) { // the endless mass of the structure
           if (wx % 32 === 0 || wy % 32 === 0) col = '#17191e';
           else if (wx % 32 === 16 && wy % 4 === 0) col = '#1b1d22';
@@ -139,10 +151,16 @@
         }
         px(x, y, col);
       }
-    } else if (ch === 'x') { // corroded concrete
+    } else if (ch === 'x') { // fractured concrete panel, rebar showing: it will give way
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        const edge = x === 0 || y === 0 || x === 7 || y === 7;
-        px(x, y, CRACK[y][x] === '#' ? '#0f0c0b' : edge ? '#6e5a4d' : (hash(bx + x, by + y) < 0.25 ? '#5a473c' : '#4a3a31'));
+        const h = hash(bx + x, by + y);
+        if ((x === 0 && y === 0) || (x === 7 && y === 7) || (x === 7 && y === 0 && h < 0.5)) continue; // chipped corners
+        let col = h < 0.3 ? '#5c6168' : '#4b5057';
+        if (x === 0 || y === 0) col = '#747a82';
+        if (x === 7 || y === 7) col = '#2a2d33';
+        if ((y === 2 || y === 5) && x > 0 && x < 7 && CRACK[y][x] !== '#' && (x + y) % 3 !== 0) col = y === 2 ? '#7a4a30' : '#5e3a26';
+        if (CRACK[y][x] === '#') col = '#08090b';
+        px(x, y, col);
       }
     } else if (ch === 'm') { // polished steel (bullets bounce)
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
@@ -198,6 +216,27 @@
   }
   for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) drawTile(tx, ty);
   const origGrid = L.grid.map((r) => r.slice());
+  // Auto-placed light fixtures: lamps under overhangs, neon strips on walls. Chosen by hash so they never move.
+  const LAMPS = [];
+  const CRACKS = [], SLICK = [];
+  {
+    const COLS = ['#ffb347', '#ffb347', '#6ff7ff', '#ff3fa4'];
+    const air = (x, y) => !Phys.isSolid(Phys.tileAt(L, x, y)) && !'^v<>'.includes(Phys.tileAt(L, x, y));
+    for (let ty = 1; ty < L.h - 2; ty++) for (let tx = 1; tx < L.w - 1; tx++) {
+      const c = L.grid[ty][tx], h = hash(tx * 31 + 7, ty * 17 + 3);
+      if (c === 'x') CRACKS.push([tx, ty]);
+      if (c === '=' && air(tx, ty - 1)) SLICK.push([tx, ty]);
+      if (c !== '#') continue;
+      if (air(tx, ty - 1) && air(tx, ty - 2) && h > 0.93 && h < 0.97) {
+        LAMPS.push({ kind: 'post', x: tx * 8 + 4, y: ty * 8, col: COLS[Math.floor(h * 997) % COLS.length], r: 26, flick: h < 0.935 });
+      } else if (air(tx, ty + 1) && air(tx, ty + 2) && h < 0.09) {
+        LAMPS.push({ kind: 'hang', x: tx * 8 + 4, y: ty * 8 + 8, col: COLS[Math.floor(h * 1000) % COLS.length], r: 30, flick: h < 0.02 });
+      } else if ((air(tx + 1, ty) || air(tx - 1, ty)) && Phys.isSolid(Phys.tileAt(L, tx, ty - 1)) && Phys.isSolid(Phys.tileAt(L, tx, ty + 1)) && h > 0.965) {
+        const side = air(tx + 1, ty) ? 1 : -1;
+        LAMPS.push({ kind: 'neon', x: tx * 8 + (side > 0 ? 8 : 0), y: ty * 8 + 1, side, col: h > 0.985 ? '#ff3fa4' : '#6ff7ff', r: 22, flick: h > 0.99 });
+      }
+    }
+  }
   L.onChange = (tx, ty) => redrawAround(tx, ty);
   function resetWorld() {
     while (L.changes.length) { const [tx, ty] = L.changes.pop(); L.grid[ty][tx] = origGrid[ty][tx]; redrawAround(tx, ty); }
@@ -231,6 +270,16 @@
     for (let i = 0; i < 9; i++) { // cross beams
       const y = Math.floor(r() * 384), hgt = 2 + Math.floor(r() * 4);
       g.fillStyle = '#131519'; g.fillRect(0, y, 192, hgt);
+    }
+    for (let i = 0; i < 10; i++) { // distant neon signage: columns of glyph-like marks
+      const x = Math.floor(r() * 186), y = Math.floor(r() * 340), n = 3 + Math.floor(r() * 5);
+      const col = r() < 0.5 ? '#ff3fa4' : r() < 0.6 ? '#3fd8ff' : '#ffb347';
+      const glow = g.createRadialGradient(x + 1, y + n * 2.5, 0, x + 1, y + n * 2.5, 26);
+      glow.addColorStop(0, col + '40'); glow.addColorStop(1, col + '00');
+      g.fillStyle = glow; g.fillRect(x - 26, y + n * 2.5 - 26, 52, 52);
+      g.fillStyle = '#0a0b0e'; g.fillRect(x - 1, y - 1, 5, n * 5 + 1);
+      g.fillStyle = col;
+      for (let k = 0; k < n; k++) for (let b = 0; b < 6; b++) if (r() < 0.55) g.fillRect(x + (b % 3), y + k * 5 + Math.floor(b / 3) * 2, 1, 1);
     }
   });
   const MID = makeLayer(160, 256, 21, (g, r) => {
@@ -390,7 +439,8 @@
   let safe = null, deadT = 0;
   const cam = { x: 0, y: 0, px: 0, py: 0 };
   let shake = 0, flash = null;
-  let parts = [], tracers = [], toasts = [];
+  let parts = [], tracers = [], toasts = [], ghosts = [];
+  let scarf = [];
   let aim = { x: 0.7, y: 0.7 }, pow = 1;
   let stick = null; // {id, ox, oy, x, y}
   let pendingFire = null;
@@ -402,6 +452,22 @@
   const heightM = () => heightOf(p.y + C.PH);
   const clampCamX = (x) => clamp(x, 0, WW - VW);
   const clampCamY = (y) => clamp(y, 0, WH - VH);
+  function resetScarf() { scarf = [...Array(7)].map(() => ({ x: p.x + 3, y: p.y + 1, px: p.x + 3, py: p.y + 1 })); }
+  function updateScarf() {
+    if (!p || !scarf.length) return;
+    const face = aim.x >= 0 ? 1 : -1;
+    const a = scarf[0];
+    a.x = a.px = p.x + 3 - face; a.y = a.py = p.y + 1;
+    for (let i = 1; i < scarf.length; i++) {
+      const n = scarf[i], prev = scarf[i - 1];
+      const vx = (n.x - n.px) * 0.86, vy = (n.y - n.py) * 0.86;
+      n.px = n.x; n.py = n.y;
+      n.x += vx - face * 0.06 + Math.sin(tick * 0.09 + i * 0.8) * 0.05;
+      n.y += vy + 0.04;
+      const dx = n.x - prev.x, dy = n.y - prev.y, d = Math.hypot(dx, dy) || 1, L0 = 1.6;
+      n.x = prev.x + dx / d * L0; n.y = prev.y + dy / d * L0;
+    }
+  }
   function snapCam() { cam.x = clampCamX(p.x + 3 - VW / 2); cam.y = clampCamY(p.y + 4 - VH * 0.55); cam.px = cam.x; cam.py = cam.y; }
 
   function newGame() {
@@ -421,7 +487,7 @@
     time = 0; misses = 0; shots = 0; bestH = 0; summitDone = false;
     safe = { x: p.x, y: p.y }; deadT = 0;
     parts = []; tracers = []; toasts = [];
-    snapCam();
+    snapCam(); resetScarf(); ghosts = [];
   }
   function loadGame(s) {
     newGame();
@@ -435,7 +501,7 @@
     time = s.time || 0; misses = s.misses || 0; shots = s.shots || 0; bestH = s.bestH || 0;
     summitDone = !!s.summit;
     safe = { x: sp.x, y: sp.y };
-    snapCam();
+    snapCam(); resetScarf();
   }
   function saveGame() {
     if (!p || state === 'title' || state === 'heaven') return;
@@ -461,6 +527,12 @@
     toasts.push({ text, x: wx, y: wy, col, life, max: life });
   }
   function updateFx() {
+    ghosts = ghosts.filter((g) => --g.life > 0);
+    if (tick % 12 === 0 && CRACKS.length) { // loose grit trickles from fractured panels
+      const [tx, ty] = CRACKS[Math.floor(Math.random() * CRACKS.length)];
+      if (L.grid[ty][tx] === 'x' && Math.abs(tx * 8 - cam.x - VW / 2) < VW && Math.abs(ty * 8 - cam.y - VH / 2) < VH)
+        parts.push({ x: tx * 8 + rnd(1, 7), y: ty * 8 + 8, vx: rnd(-0.1, 0.1), vy: 0.2, g: 0.04, life: 40, col: '#6b7078' });
+    }
     for (const q of parts) {
       q.vy += q.g; q.x += q.vx; q.y += q.vy; q.life--;
       if (q.collide && Phys.isSolid(Phys.tileAt(L, Math.floor(q.x / 8), Math.floor(q.y / 8)))) { q.y -= q.vy; q.vy *= -0.4; q.vx *= 0.6; }
@@ -538,29 +610,34 @@
         SFX.crumble(); shake = Math.max(shake, 5); later(HAPTIC.crumble);
       } else if (h.t === 'crystal') {
         burst(h.x, h.y, 12, ['#6ff7ff', '#ffffff'], 1.4, 0, 16);
-        toast('補給', h.x, h.y - 8, '#6ff7ff', 50);
+        toast('充填', h.x, h.y - 8, '#6ff7ff', 50);
         SFX.crystal(); later(HAPTIC.remote);
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
         SFX.clank(); later(HAPTIC.clank);
-        toast(h.t === 'glass' ? 'ガラスに弾かれた' : 'かたい…いまは壊せない', h.x, h.y - 8, '#c2c3c7', 90);
+        toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
       } else if (h.t === 'target') {
         const t = L.targets[h.i];
         burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
         for (const [dx, dy] of t.doors) burst(dx * 8 + 4, dy * 8 + 4, 5, ['#ff004d', '#7e2553', '#ff77a8'], 1, 0.08, 24);
-        toast('ガコン！', h.x, h.y - 8, '#ff77a8', 60);
+        toast('認証', h.x, h.y - 8, '#ff3040', 60);
         const d0 = t.doors[0];
-        if (d0) toast('扉が開いた', d0[0] * 8 + 16, d0[1] * 8 - 4, '#ff77a8', 90);
+        if (d0) toast('隔壁が、開いた', d0[0] * 8 + 16, d0[1] * 8 - 4, '#ff3040', 90);
         SFX.door(); shake = Math.max(shake, 5); later(HAPTIC.target);
       }
     }
     burst(flash.x, flash.y, 4, ['#c2c3c7'], 0.4, -0.01, 16);
     parts.push({ x: cx, y: cy, vx: -e.dy * rnd(0.6, 1.2) * (Math.random() < 0.5 ? 1 : -1), vy: -1.6, g: 0.15, life: 50, col: '#ffa300', collide: true });
     shake = Math.max(shake, 2 + Math.round(pow * 2));
+    pushGhost(10);
     SFX.shot(pow);
   }
   // after a shot, let the release tick finish before the follow-up pattern
   const later = (fn) => setTimeout(fn, 70);
+  function pushGhost(life) {
+    const legs = !p.grounded ? 'air' : Math.abs(p.vx) > 0.4 ? 'slide' : 'idle';
+    ghosts.push({ x: Math.round(p.x) - 1, y: Math.round(p.y) - 3, face: aim.x >= 0 ? 1 : -1, legs, life, max: life });
+  }
   function isSafeSpot() {
     if (!p.grounded || Math.abs(p.vx) > 0.2) return false;
     const x0 = Math.floor(p.x / 8) - 1, x1 = Math.floor((p.x + C.PW) / 8) + 1;
@@ -578,7 +655,7 @@
     time++;
     if (p.dead) {
       if (--deadT <= 0) {
-        p = Phys.newPlayer(safe.x, safe.y, abil); p.grounded = true;
+        p = Phys.newPlayer(safe.x, safe.y, abil); p.grounded = true; resetScarf();
         burst(p.x + 3, p.y + 4, 10, ['#fff1e8', '#ffec27'], 1, 0, 14);
         SFX.respawn(); HAPTIC.respawn();
       }
@@ -598,7 +675,7 @@
       } else if (e.t === 'die') {
         misses++; deadT = 40;
         burst(p.x + 3, p.y + 4, 16, ['#ff004d', '#fff1e8', '#ffec27'], 1.8, 0.04, 20);
-        toast('ミス', p.x + 3, p.y - 6, '#ff004d', 50);
+        toast('損傷', p.x + 3, p.y - 8, '#ff3040', 50);
         SFX.die(); shake = 6; HAPTIC.die();
         pendingFire = null;
       } else if (e.t === 'crystal') {
@@ -606,7 +683,7 @@
         SFX.crystal(); HAPTIC.crystal();
       } else if (e.t === 'relic') {
         burst(e.x, e.y, 18, ['#fff1e8', '#ff77a8', '#ffec27'], 1.6, 0, 26);
-        toast('記録片 ' + relicCount() + '/' + L.relics.length, e.x, e.y - 8, '#ff77a8', 90);
+        toast('記録片 ' + relicCount() + '/' + L.relics.length + '　…誰の記録だ', e.x, e.y - 8, '#ff3fa4', 100);
         SFX.relic(); HAPTIC.relic(); saveGame();
       } else if (e.t === 'item') {
         burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
@@ -616,11 +693,13 @@
       else if (e.t === 'heaven') heaven();
     }
     if (pendingFire && !shot) {
-      if (p.ammo <= 0) { SFX.click(); toast('弾切れ', p.x + 3, p.y - 6, '#83769c', 30); pendingFire = null; }
+      if (p.ammo <= 0) { SFX.click(); toast('――空だ', p.x + 3, p.y - 8, '#7a808a', 30); pendingFire = null; }
       else if (--pendingFire.ttl <= 0) pendingFire = null;
     } else pendingFire = null;
 
     if (!p.dead && isSafeSpot()) { safe.x = p.x; safe.y = p.y; }
+    if (Math.hypot(p.vx, p.vy) > 3 && tick % 3 === 0) pushGhost(8);
+    updateScarf();
     if (p.grounded && Math.abs(p.vx) > 0.6 && tick % 4 === 0) burst(p.x + 3, p.y + C.PH, 1, ['#83769c'], 0.3, 0, 10);
     bestH = Math.max(bestH, heightM());
     if (tick % 90 === 0) saveGame();
@@ -651,9 +730,9 @@
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, VW, VH);
     tileLayer(FAR, 0.12, 1 - out * 0.7);
-    // fog between the layers
+    // fog between the layers, faintly tinted by the neon below
     const fog = ctx.createLinearGradient(0, 0, 0, VH);
-    fog.addColorStop(0, 'rgba(20,24,30,0)'); fog.addColorStop(0.6, 'rgba(24,28,34,0.35)'); fog.addColorStop(1, 'rgba(30,34,40,0.55)');
+    fog.addColorStop(0, 'rgba(20,24,30,0)'); fog.addColorStop(0.55, 'rgba(34,20,40,0.28)'); fog.addColorStop(1, 'rgba(18,40,48,0.5)');
     ctx.fillStyle = fog; ctx.fillRect(0, 0, VW, VH);
     tileLayer(MID, 0.35, 1 - out * 0.8);
   }
@@ -725,28 +804,62 @@
     const face = aim.x >= 0 ? 1 : -1;
     const legs = !p.grounded ? 'air' : Math.abs(p.vx) > 0.4 ? 'slide' : 'idle';
     const spr = PSPR[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1][legs];
-    const x = Math.round(p.x) - 1, y = Math.round(p.y) - 1;
+    const x = Math.round(p.x) - 1, y = Math.round(p.y) - 3;
+    // afterimages
+    for (const g of ghosts) {
+      ctx.globalAlpha = (g.life / g.max) * 0.45;
+      ctx.save();
+      if (g.face < 0) { ctx.translate(g.x + 8, g.y); ctx.scale(-1, 1); ctx.drawImage(GHOST[g.legs], 0, 0); }
+      else ctx.drawImage(GHOST[g.legs], g.x, g.y);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    // scarf (behind the body)
+    for (let i = 1; i < scarf.length; i++) {
+      const n = scarf[i];
+      ctx.fillStyle = i < 4 ? '#e0303a' : i < 6 ? '#a8222c' : '#6a141c';
+      ctx.fillRect(Math.round(n.x), Math.round(n.y), 1, i < 3 ? 2 : 1);
+    }
     ctx.save();
     if (face < 0) { ctx.translate(x + 8, y); ctx.scale(-1, 1); ctx.drawImage(spr, 0, 0); }
     else ctx.drawImage(spr, x, y);
     ctx.restore();
     const cx = Math.round(p.x + 3), cy = Math.round(p.y + 4);
-    for (let d = 2; d <= 7; d++) {
-      ctx.fillStyle = d >= 6 ? '#c8ccd2' : '#5b616d';
+    for (let d = 2; d <= 8; d++) {
+      ctx.fillStyle = d >= 7 ? '#dfe3e8' : '#3a3f47';
       ctx.fillRect(Math.round(cx + aim.x * d), Math.round(cy + aim.y * d), 1, 1);
     }
     // shots left, over the head (always while airborne or aiming)
     if (!p.grounded || aiming()) {
       for (let i = 0; i < Phys.maxAmmo(p); i++) {
         const has = i < p.ammo;
-        const bx = Math.round(p.x) + i * 4, by = Math.round(p.y) - 5;
+        const bx = Math.round(p.x) + i * 4, by = Math.round(p.y) - 7;
         ctx.fillStyle = '#000'; ctx.fillRect(bx, by, 3, 3);
-        ctx.fillStyle = has ? '#ffa300' : '#5f574f'; ctx.fillRect(bx, by, 2, 2);
+        ctx.fillStyle = has ? '#8ff8ff' : '#3a3f47'; ctx.fillRect(bx, by, 2, 2);
       }
     }
   }
+  function lampOn(l) { return !l.flick || (Math.sin(tick * 0.7 + l.x) > -0.6 && (tick + l.y) % 97 > 6); }
   function drawWorld() {
     ctx.drawImage(tiles, 0, 0);
+    for (const l of LAMPS) {
+      if (Math.abs(l.x - cam.x - VW / 2) > VW || Math.abs(l.y - cam.y - VH / 2) > VH) continue;
+      const on = lampOn(l);
+      if (l.kind === 'hang') {
+        ctx.fillStyle = '#15171b'; ctx.fillRect(l.x, l.y, 1, 2); ctx.fillRect(l.x - 2, l.y + 2, 5, 1);
+        ctx.fillStyle = on ? l.col : '#2a2d33'; ctx.fillRect(l.x - 1, l.y + 3, 3, 1);
+      } else if (l.kind === 'post') {
+        ctx.fillStyle = '#15171b'; ctx.fillRect(l.x, l.y - 5, 1, 5); ctx.fillRect(l.x - 1, l.y - 1, 3, 1);
+        ctx.fillStyle = on ? l.col : '#2a2d33'; ctx.fillRect(l.x - 1, l.y - 6, 3, 1);
+      } else {
+        ctx.fillStyle = on ? l.col : '#2a2d33'; ctx.fillRect(l.side > 0 ? l.x : l.x - 1, l.y, 1, 6);
+      }
+    }
+    for (const [tx, ty] of SLICK) { // a glint crawling along wet floors
+      if (L.grid[ty][tx] !== '=') continue;
+      const gx = (Math.floor(tick / 3) + tx * 5) % 24;
+      if (gx < 8) { ctx.fillStyle = '#c8fbff'; ctx.fillRect(tx * 8 + gx, ty * 8, 1, 1); }
+    }
     for (const s of L.signs) ctx.drawImage(SIGN, s.x, s.y);
     for (const c of L.crystals) {
       const bob = c.active ? Math.round(Math.sin(tick / 14 + c.x) * 1.5) : 0;
@@ -790,18 +903,80 @@
       ctx.fillRect(x + 1, y - 8, 6, 1); ctx.fillRect(x, y - 7, 1, 1); ctx.fillRect(x + 7, y - 7, 1, 1);
       ctx.fillStyle = '#fff1e8'; ctx.fillRect(x + 3, y - 3 + Math.round(glow * 2), 2, 2);
     }
-    for (const t of tracers) dotted(t.segs, 999, t.life > 4 ? '#fff1e8' : t.life > 2 ? '#ffec27' : '#ffa300', 1, t.skip);
-    drawPreview();
     if (p) drawPlayer();
-    if (flash) {
-      ctx.fillStyle = '#ffec27'; ctx.fillRect(Math.round(flash.x) - 1, Math.round(flash.y) - 1, 3, 3);
-      ctx.fillStyle = '#fff1e8'; ctx.fillRect(Math.round(flash.x), Math.round(flash.y), 1, 1);
-    }
     for (const q of parts) { ctx.fillStyle = q.col; ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); }
+  }
+  // drawn after the darkness: things that are themselves light
+  function drawWorldFX() {
+    for (const t of tracers) dotted(t.segs, 999, t.life > 4 ? '#ffffff' : t.life > 2 ? '#8ff8ff' : '#3fd8ff', 1, t.skip);
+    if (flash) {
+      ctx.fillStyle = '#8ff8ff'; ctx.fillRect(Math.round(flash.x) - 1, Math.round(flash.y) - 1, 3, 3);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(flash.x), Math.round(flash.y), 1, 1);
+    }
+    if (p && !p.dead) { // visor glow cuts through the dark
+      const f = aim.x >= 0 ? 1 : -1, vx = Math.round(p.x) - 1 + (f > 0 ? 3 : 2), vy = Math.round(p.y) - 1;
+      ctx.fillStyle = LAMP[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1];
+      ctx.fillRect(vx, vy, 3, 1);
+    }
+    drawPreview();
+  }
+
+  // ---------------------------------------------------------------- lighting
+  const lightCv = document.createElement('canvas'), lg = lightCv.getContext('2d');
+  function lightsInView() {
+    const out = [];
+    const add = (x, y, r, a, col) => { if (Math.abs(x - cam.x - VW / 2) < VW / 2 + r && Math.abs(y - cam.y - VH / 2) < VH / 2 + r) out.push({ x, y, r, a, col }); };
+    if (p && !p.dead) add(p.x + 3, p.y + 1, 38, 0.9, LAMP[p.ammo <= 0 ? 0 : p.ammo >= Phys.maxAmmo(p) ? 2 : 1]);
+    if (flash) add(flash.x, flash.y, 60, 1, '#8ff8ff');
+    for (const t of tracers) { const s = t.segs[t.segs.length - 1]; add(s.x1, s.y1, 16, t.life / 6, '#8ff8ff'); }
+    for (const l of LAMPS) if (lampOn(l)) add(l.x, l.y + (l.kind === 'hang' ? 4 : l.kind === 'post' ? -6 : 3), l.r, 0.85, l.col);
+    for (const c of L.crystals) if (c.active) add(c.x, c.y, 20, 0.8, '#6ff7ff');
+    for (const it of L.items) if (!it.got) add(it.x, it.y, 26, 0.9, '#ffd98a');
+    for (const r of L.relics) if (!r.got) add(r.x, r.y, 12, 0.7, '#ff3fa4');
+    for (const sg of L.signs) add(sg.x + 4, sg.y + 3, 16, 0.7, '#ffb347');
+    for (const t of L.targets) if (!t.hit) add(t.tx * 8 + 4, t.ty * 8 + 4, 14, tick % 60 < 40 ? 0.9 : 0.5, '#ff3040');
+    add(L.flag.x + 4, L.flag.y + 3, 22, 0.8, '#ff3040');
+    add(L.gate.x + 4, L.gate.y, 70, 1, '#fff4dc');
+    return out;
+  }
+  const worldCv = document.createElement('canvas'), wctx = worldCv.getContext('2d');
+  function applyLighting(dark) {
+    if (lightCv.width !== VW || lightCv.height !== VH) { lightCv.width = VW; lightCv.height = VH; }
+    lg.globalCompositeOperation = 'source-over';
+    lg.globalAlpha = 1;
+    lg.fillStyle = 'rgba(2,3,6,' + dark + ')';
+    lg.fillRect(0, 0, VW, VH);
+    const lights = lightsInView();
+    lg.globalCompositeOperation = 'destination-out';
+    lg.fillStyle = '#000';
+    for (const l of lights) { // stepped falloff keeps the pixel-art look
+      const x = Math.round(l.x - Math.round(cam.x)), y = Math.round(l.y - Math.round(cam.y));
+      for (const [k, a] of [[1, 0.35], [0.7, 0.35], [0.45, 0.4]]) {
+        lg.globalAlpha = a * l.a;
+        lg.beginPath(); lg.arc(x, y, l.r * k, 0, 6.283); lg.fill();
+      }
+    }
+    lg.globalAlpha = 1;
+    // darken only the foreground structure (the far city stays visible behind it)
+    wctx.globalCompositeOperation = 'source-atop';
+    wctx.drawImage(lightCv, 0, 0);
+    wctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(worldCv, 0, 0);
+    // coloured glow on top
+    ctx.globalCompositeOperation = 'lighter';
+    for (const l of lights) {
+      const x = Math.round(l.x - Math.round(cam.x)), y = Math.round(l.y - Math.round(cam.y));
+      ctx.globalAlpha = 0.07 * l.a; ctx.fillStyle = l.col;
+      ctx.beginPath(); ctx.arc(x, y, l.r * 0.6, 0, 6.283); ctx.fill();
+      ctx.globalAlpha = 0.08 * l.a;
+      ctx.beginPath(); ctx.arc(x, y, l.r * 0.25, 0, 6.283); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
   }
   function drawHUD() {
     const top = 4;
-    drawText(heightM() + 'm', 4, top, '#fff1e8');
+    drawText(heightM() + 'm', 4, top, '#cfd3d8');
     for (let i = 0; i < Phys.maxAmmo(p); i++) {
       const full = i < p.ammo;
       ctx.fillStyle = '#000'; ctx.fillRect(5 + i * 5, top + 9, 3, 5);
@@ -809,10 +984,10 @@
       if (full) { ctx.fillStyle = '#ffec27'; ctx.fillRect(4 + i * 5, top + 8, 3, 1); }
     }
     const tt = fmtTime(time);
-    drawText(tt, Math.round((VW - textW(tt)) / 2), top, '#c2c3c7');
+    drawText(tt, Math.round((VW - textW(tt)) / 2), top, '#5b616d');
     const rc = relicCount() + '/' + L.relics.length;
     ctx.drawImage(FEATHER, Math.round((VW - textW(rc)) / 2) - 8, top + 8);
-    drawText(rc, Math.round((VW - textW(rc)) / 2), top + 9, '#ff77a8');
+    drawText(rc, Math.round((VW - textW(rc)) / 2), top + 9, '#ff3fa4');
     // altitude rail
     const r0 = 26, r1 = VH - 12;
     const yAt = (feet) => Math.round(r1 - (r1 - r0) * clamp((START_FEET - feet) / (START_FEET - TOP_FEET), 0, 1));
@@ -843,11 +1018,22 @@
     if (shake > 0) { sx = Math.round(rnd(-1, 1)); sy = Math.round(rnd(-1, 1)); shake--; }
     ctx.imageSmoothingEnabled = false;
     drawBackground();
+    if (worldCv.width !== VW || worldCv.height !== VH) { worldCv.width = VW; worldCv.height = VH; }
+    wctx.imageSmoothingEnabled = false;
+    wctx.clearRect(0, 0, VW, VH);
+    ctx = wctx;
     ctx.save();
     ctx.translate(sx - Math.round(cam.x), sy - Math.round(cam.y));
     drawWorld();
     ctx.restore();
+    ctx = mainCtx;
+    const alt = clamp((START_FEET - (cam.y + VH / 2)) / (START_FEET - TOP_FEET), 0, 1);
+    applyLighting(0.84 - clamp((alt - 0.82) / 0.18, 0, 1) * 0.6);
     drawSnow();
+    ctx.save();
+    ctx.translate(sx - Math.round(cam.x), sy - Math.round(cam.y));
+    drawWorldFX();
+    ctx.restore();
     if (state !== 'title') { drawHUD(); drawStick(); }
     renderUI();
   }
@@ -910,9 +1096,9 @@
     $('btnPause').hidden = name !== null;
   }
   const statsHTML = (rows) => rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
-  const baseStats = () => [['タイム', fmtTime(time)], ['ミス', misses + '回'], ['発砲', shots + '発'], ['記録片', relicCount() + ' / ' + L.relics.length]];
+  const baseStats = () => [['経過', fmtTime(time)], ['損傷', misses + '回'], ['発砲', shots + '発'], ['記録片', relicCount() + ' / ' + L.relics.length]];
   function abilList() {
-    const out = ['空中の弾 ' + abil.ammo + '発'];
+    const out = ['宙の弾 ' + abil.ammo];
     if (abil.breaker) out.push('砕岩弾');
     if (abil.pierce) out.push('貫通弾');
     if (abil.magnum) out.push('強装弾');
@@ -926,7 +1112,7 @@
     g.drawImage(ITEM_SPR[type], 0, 0, 7, 7, 4, 4, 56, 56);
     $('itemName').textContent = info.name;
     $('itemDesc').textContent = info.desc;
-    $('itemAbil').textContent = '現在の力: ' + abilList();
+    $('itemAbil').textContent = abilList();
     saveGame();
     setTimeout(() => { if (state === 'item') show('item'); }, 350);
   }
@@ -936,21 +1122,21 @@
     $('btnCont').disabled = !has;
     $('btnCont').classList.toggle('primary', has);
     $('btnNew').classList.toggle('primary', !has);
-    $('btnNew').textContent = 'はじめから';
+    $('btnNew').textContent = '目覚める';
     newArmed = false;
     const parts2 = [];
-    if (best.summit) parts2.push('頂上 ' + fmtTime(best.summit));
-    if (best.heaven) parts2.push('天国 ' + fmtTime(best.heaven));
-    $('bestLine').textContent = parts2.length ? 'ベスト: ' + parts2.join(' / ') : 'PCはマウスでドラッグ。Esc でポーズ。';
+    if (best.summit) parts2.push('最上層 ' + fmtTime(best.summit));
+    if (best.heaven) parts2.push('外 ' + fmtTime(best.heaven));
+    $('bestLine').textContent = parts2.length ? '最短記録　' + parts2.join('　') : 'PC：マウスで引いて放す　Esc：静止';
     syncSound();
   }
   const syncSound = () => {
-    $('btnSound').textContent = '音: ' + (prefs.sound ? 'ON' : 'OFF');
-    $('btnHaptics').textContent = '振動: ' + (prefs.haptics ? 'ON' : 'OFF');
+    $('btnSound').textContent = '音　' + (prefs.sound ? 'ON' : 'OFF');
+    $('btnHaptics').textContent = '振動　' + (prefs.haptics ? 'ON' : 'OFF');
     $('btnHaptics').hidden = !Haptics.supported;
   };
   $('btnNew').addEventListener('click', () => {
-    if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = 'セーブを消して開始'; return; }
+    if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = '記録を捨てて、目覚める'; return; }
     audioUnlock(); store.del(SAVE_KEY); newGame(); play();
   });
   $('btnCont').addEventListener('click', () => {
@@ -961,8 +1147,8 @@
   function play() { state = 'play'; stick = null; pendingFire = null; show(null); }
   function pause() {
     state = 'pause'; saveGame(); stick = null;
-    $('pauseStats').innerHTML = statsHTML([['高さ', heightM() + 'm'], ['最高到達', bestH + 'm']].concat(baseStats()));
-    $('pauseAbil').textContent = '現在の力: ' + abilList();
+    $('pauseStats').innerHTML = statsHTML([['高度', heightM() + 'm'], ['最高高度', bestH + 'm']].concat(baseStats()));
+    $('pauseAbil').textContent = abilList();
     syncSound(); show('pause');
   }
   const resume = play;
@@ -989,7 +1175,7 @@
     const rc = relicCount();
     setTimeout(() => {
       $('heavenStats').innerHTML = statsHTML(baseStats());
-      $('heavenHint').textContent = rc < L.relics.length ? '記録片は、まだどこかに残っている。（' + rc + '/' + L.relics.length + '）' : 'すべての記録片を集めた。';
+      $('heavenHint').textContent = rc < L.relics.length ? '記録片は、まだ下に眠っている。（' + rc + '/' + L.relics.length + '）' : '記録片は、すべて揃った。…それで、何が変わる？';
       store.del(SAVE_KEY);
       state = 'heaven'; show('heaven');
     }, 1500);
