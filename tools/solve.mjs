@@ -98,7 +98,8 @@ function sim(tx, ty, shots) {
   L.items.forEach((it) => { it.got = true; }); // items only take effect between phases
   let si = 0, result = null;
   sims++;
-  for (let f = 0; f < MAXF; f++) {
+  const maxf = shots.maxf || MAXF;
+  for (let f = 0; f < maxf; f++) {
     let s = si < shots.length && shots[si].t <= f ? shots[si] : null;
     if (s && s.aim === 'crystal') s = aimAtCrystal(p, s);
     else if (s && s.aim === 'target') { s = aimAtTarget(p, s); if (!s) break; }
@@ -171,6 +172,16 @@ function plans(tx, ty) {
       if (ammo >= 3 || rnd() < 0.5) plan.push({ t: t2 + 8 + Math.floor(rnd() * 20), ...dir(rAng()), pow: rPow() });
       out.push(plan);
     }
+  }
+  // updraft template: ride the wind for a while, then shoot out of it (late shots, longer simulation)
+  let windy = false;
+  for (let dy = -14; dy <= 4 && !windy; dy++) for (let dx = -12; dx <= 12; dx++) if (Phys.tileAt(L, tx + dx, ty + dy) === 'w') { windy = true; break; }
+  if (windy) for (let i = 0; i < 1200 * MUL; i++) {
+    const t2 = 15 + Math.floor(rnd() * 300);
+    const plan = [{ t: 0, ...dir(rnd() * Math.PI * 2), pow: rPow() }, { t: t2, ...dir(rnd() * Math.PI * 2), pow: rPow() }];
+    if (rnd() < 0.6) plan.push({ t: t2 + 6 + Math.floor(rnd() * 40), ...dir(rnd() * Math.PI * 2), pow: rPow() });
+    plan.maxf = 520;
+    out.push(plan);
   }
   if (nearTarget(tx, ty)) {
     out.push([{ t: 0, aim: 'target', pow: C.MINPOW }]);

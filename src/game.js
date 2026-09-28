@@ -24,7 +24,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
-  const SAVE_KEY = 'recoilclimb.save.v4', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
+  const SAVE_KEY = 'recoilclimb.save.v5', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
   const prefs = Object.assign({ sound: true, haptics: true }, store.get(PREF_KEY, {}));
   let best = store.get(BEST_KEY, {}); // {summit, heaven} in frames
 
@@ -245,7 +245,10 @@
     }
   }
   const EMBERS = []; // smouldering soot spots, visible in the dark
-  for (const [tx, ty, side] of window.LEVEL.SCORCH || []) { bakeScorch(tx, ty, side); EMBERS.push({ x: side < 0 ? tx * 8 : tx * 8 + 8, y: ty * 8 + 4, side, seed: tx * 7 + ty }); }
+  const isWallFace = (tx, ty, side) => Phys.stopsBullet(Phys.tileAt(L, tx, ty)) && !Phys.isSolid(Phys.tileAt(L, tx + side, ty));
+  for (const [tx, ty, side] of window.LEVEL.SCORCH || []) { if (!isWallFace(tx, ty, side)) continue; bakeScorch(tx, ty, side); EMBERS.push({ x: side < 0 ? tx * 8 : tx * 8 + 8, y: ty * 8 + 4, side, seed: tx * 7 + ty }); }
+  const WINDS = []; // updraft columns, for the rising streaks
+  for (let tx = 0; tx < L.w; tx++) for (let ty = 0; ty < L.h; ty++) if (L.grid[ty][tx] === 'w') WINDS.push({ tx, ty });
   const HIDDEN = [];
   for (let ty = 0; ty < L.h; ty++) for (let tx = 0; tx < L.w; tx++) if (L.grid[ty][tx] === 'h') HIDDEN.push({ tx, ty, t: 0 });
   function revealNear(x, y, r, t) {
@@ -669,7 +672,7 @@
     }
     if (e.blast) { // pressed against the wall: louder, brighter, leaves soot
       const w = e.hits.find((h) => h.t === 'wall' || h.t === 'clank');
-      if (w) { const stx = Math.floor((w.x + w.dx) / 8), sty = Math.floor(w.y / 8), sd = w.dx > 0 ? -1 : 1; bakeScorch(stx, sty, sd, tick); EMBERS.push({ x: sd < 0 ? stx * 8 : stx * 8 + 8, y: sty * 8 + 4, side: sd, seed: tick }); }
+      if (w) { const stx = Math.floor((w.x + w.dx) / 8), sty = Math.floor(w.y / 8), sd = w.dx > 0 ? -1 : 1; if (isWallFace(stx, sty, sd)) bakeScorch(stx, sty, sd, tick); EMBERS.push({ x: sd < 0 ? stx * 8 : stx * 8 + 8, y: sty * 8 + 4, side: sd, seed: tick }); }
       burst(flash.x, flash.y, 16, ['#ffb347', '#ffffff', '#ff5a1e'], 2.2, 0.04, 18);
       SFX.blast(); later(HAPTIC.blast);
       shake = Math.max(shake, 7);
@@ -807,20 +810,35 @@
     for (let y = Math.floor(oy); y < VH; y += img.height) for (let x = Math.floor(ox); x < VW; x += img.width) ctx.drawImage(img, x, y);
     ctx.globalAlpha = 1;
   }
+  // how far into the open sky above the tower the view is (0 inside, 1 outside), and how high up there
+  const OUT_Y = (window.LEVEL.OY || 0) * 8;
+  const skyT = () => clamp((OUT_Y + 160 - (cam.y + VH / 2)) / 320, 0, 1);
+  const skyH = () => clamp(1 - (cam.y + VH / 2) / Math.max(1, OUT_Y), 0, 1);
   function drawBackground() {
-    const alt = clamp((START_FEET - (cam.y + VH / 2)) / (START_FEET - TOP_FEET), 0, 1);
-    const out = clamp((alt - 0.8) / 0.2, 0, 1); // light from outside near the very top
+    const t = skyT(), h = skyH();
     const gr = ctx.createLinearGradient(0, 0, 0, VH);
-    gr.addColorStop(0, mix('#07080b', '#b9c0c4', out));
-    gr.addColorStop(1, mix('#14171c', '#e6dcc4', out));
+    gr.addColorStop(0, mix('#07080b', mix('#141a3a', '#5a6d9a', h), t));
+    gr.addColorStop(0.7, mix('#101318', mix('#3b3558', '#e0a878', h), t));
+    gr.addColorStop(1, mix('#14171c', mix('#5a4058', '#f6d3a0', h), t));
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, VW, VH);
-    tileLayer(FAR, 0.12, 1 - out * 0.7);
+    tileLayer(FAR, 0.12, 1 - t * 0.85);
     // fog between the layers, faintly tinted by the neon below
     const fog = ctx.createLinearGradient(0, 0, 0, VH);
     fog.addColorStop(0, 'rgba(20,24,30,0)'); fog.addColorStop(0.55, 'rgba(34,20,40,0.28)'); fog.addColorStop(1, 'rgba(18,40,48,0.5)');
-    ctx.fillStyle = fog; ctx.fillRect(0, 0, VW, VH);
-    tileLayer(MID, 0.35, 1 - out * 0.8);
+    ctx.globalAlpha = 1 - t; ctx.fillStyle = fog; ctx.fillRect(0, 0, VW, VH); ctx.globalAlpha = 1;
+    tileLayer(MID, 0.35, 1 - t * 0.95);
+    if (t > 0) { // outside: long bands of cloud drifting past
+      for (let i = 0; i < 6; i++) {
+        const y = ((i * 57 - cam.y * (0.15 + i * 0.05)) % (VH + 40) + VH + 40) % (VH + 40) - 20;
+        const x = ((i * 91 + tick * (0.05 + i * 0.02) - cam.x * 0.2) % 260 + 260) % 260 - 60;
+        ctx.globalAlpha = t * (0.10 + i * 0.03);
+        ctx.fillStyle = mix('#c8c0d8', '#fff0dc', h);
+        ctx.fillRect(Math.round(x), Math.round(y), 90 + i * 12, 2 + (i % 3));
+        ctx.fillRect(Math.round(x) + 14, Math.round(y) - 1, 50 + i * 6, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
   function drawSnow() { // drifting dust
     const dx = cam.x - cam.px, dy = cam.y - cam.py;
@@ -1004,7 +1022,21 @@
       }
     }
   }
+  function drawWind() {
+    for (const w of WINDS) {
+      const x = w.tx * 8, y = w.ty * 8;
+      if (x < cam.x - 8 || x > cam.x + VW || y < cam.y - 8 || y > cam.y + VH) continue;
+      for (let k = 0; k < 2; k++) {
+        const h = hash(w.tx * 13 + k, w.ty * 7), sy = y + 7 - ((tick * (1.5 + h) + h * 64) % 8);
+        ctx.globalAlpha = 0.18 + h * 0.2;
+        ctx.fillStyle = h > 0.6 ? '#e8f4ff' : '#9fb4c8';
+        ctx.fillRect(x + Math.floor(h * 7), Math.round(sy), 1, 2 + (k === 0 ? 1 : 0));
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
   function drawWorldFX() {
+    drawWind();
     drawEmbers();
     for (const hdn of HIDDEN) {
       if (hdn.t <= 0) continue;
@@ -1141,7 +1173,7 @@
     ctx.restore();
     ctx = mainCtx;
     const alt = clamp((START_FEET - (cam.y + VH / 2)) / (START_FEET - TOP_FEET), 0, 1);
-    applyLighting(0.84 - clamp((alt - 0.82) / 0.18, 0, 1) * 0.6);
+    applyLighting(0.84 - skyT() * (0.45 + skyH() * 0.3));
     drawSnow();
     ctx.save();
     ctx.translate(sx - Math.round(cam.x), sy - Math.round(cam.y));

@@ -17,15 +17,19 @@
 // summit wall -> reinforced ceiling (breaker + magnum) -> outside.
 // Every item sits out in the open on the way. Exactly one pickup is tucked into a gap: a record shard.
 (function (root) {
-  const W = 140, H = 330;
+  // The map is painted in two parts: the sky above the tower ("outside", rows 0..OY-1, painted with
+  // s* helpers) and everything else (painted with coordinates relative to the tower part, shifted by OY).
+  const W = 140, H0 = 330, OY = 250, H = H0 + OY;
   const G = [...Array(H)].map(() => Array(W).fill('#'));
-  const rect = (x0, y0, x1, y1, c) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) G[y][x] = c; };
-  const put = (x, y, c) => { G[y][x] = c; };
-  const stamp = (x0, y0, rows) => rows.forEach((r, j) => [...r].forEach((c, i) => { if (c !== ' ') G[y0 + j][x0 + i] = c; }));
+  const srect = (x0, y0, x1, y1, c) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) G[y][x] = c; };
+  const sput = (x, y, c) => { G[y][x] = c; };
+  const rect = (x0, y0, x1, y1, c) => srect(x0, y0 + OY, x1, y1 + OY, c);
+  const put = (x, y, c) => sput(x, y + OY, c);
+  const stamp = (x0, y0, rows) => rows.forEach((r, j) => [...r].forEach((c, i) => { if (c !== ' ') G[y0 + j + OY][x0 + i] = c; }));
 
   // ================================================================ field (one shot only)
   rect(1, 0, 115, 327, '.');            // the open void over the field
-  const ground = (x0, x1, top) => rect(x0, top, x1, H - 1, '#');
+  const ground = (x0, x1, top) => rect(x0, top, x1, H0 - 1, '#');
   ground(1, 12, 328);                   // start
   ground(13, 22, 326);                  // small step
   ground(23, 30, 324);                  // another step
@@ -52,7 +56,7 @@
   rect(116, 319, 119, 323, '.');        // doorway into the tower
 
   // ---- knowledge chain in the field (never explained; each record hints at the next step)
-  stamp(52, 319, ['###']); put(53, 318, '*');                       // R1: easy -> wall blasts
+  stamp(52, 319, ['###']); put(53, 318, '*');                       // easy lore record
   stamp(107, 310, ['####']); put(108, 309, '*');                    // R2: by the scorched tower wall
   stamp(99, 306, ['hhh']); stamp(91, 302, ['hhh']); stamp(83, 298, ['hhh']); stamp(75, 294, ['hhhh']);
   put(76, 293, '*');                                                // R3: end of the hidden walkway
@@ -82,8 +86,8 @@
 
   // ================================================================ tower (x 120-137)
   const T = {
-    // ---- outside
-    3: '........H.........',
+    // ---- exit shaft above the reinforced ceiling (the tower's crown opens into the sky at row 0)
+    3: '..................',
     4: '.......ccc........',
     8: '...o..............',
     11: '............o.....',
@@ -190,7 +194,7 @@
     287: '...............###',
     290: '.........=======..',
     // ---- foundry (one shot): the sensor door, then the first magazine
-    297: '..A...............',
+    297: '*.A...............',
     298: '#####.............',
     300: '######dddd########',
     301: 'T.................',
@@ -204,6 +208,50 @@
   };
   for (let y = 184; y <= 235; y++) T[y] = '##################';
   for (let y = 1; y <= 323; y++) stamp(120, y, [T[y] || '..................']);
+  rect(120, 0, 137, 0, '.');            // the crown is open
+
+  // ================================================================ OUTSIDE (sky rows 0..OY-1; a second act)
+  // You leave the tower's crown into open air: broken crown ledges and an updraft, a debris field of
+  // floating girders, a long bridge of cells across the sky, a wind chute lined with shards, the last light.
+  srect(1, 0, 138, OY - 1, '.');
+  const g = (x0, x1, y) => srect(x0, y, x1, y, 'c');          // girder fragment (1 tile thick)
+  // O1 crown (y 205..249)
+  g(114, 118, 244);                     // left rim of the broken crown
+  srect(122, 240, 128, 240, 'c');       // L1: first ledge above the crown
+  srect(100, 240, 110, 240, 'c');       // L2
+  srect(103, 206, 107, 238, 'w');       // updraft W1
+  g(96, 102, 204);                      // L3 at the top of the updraft
+  g(131, 135, 222); sput(133, 221, '*');   // record off to the right
+  // O2 debris field (y 150..204), moving left and up
+  g(84, 88, 196);
+  g(72, 75, 188);
+  sput(66, 180, 'o');
+  g(58, 62, 178);
+  g(70, 74, 168); srect(70, 169, 74, 169, 'v');   // shards on its underside
+  g(84, 88, 160);
+  g(97, 102, 152);                      // rest point
+  // O3 cell bridge (y 136..152), a long traverse to the left
+  g(80, 84, 145);
+  sput(70, 150, 'o');                   // low cell: shoot it while crossing
+  g(54, 58, 146);
+  sput(46, 140, 'o');
+  srect(39, 148, 41, 148, '^'); srect(39, 149, 41, 149, 'g'); sput(39, 150, 'g'); sput(40, 150, 'o'); sput(41, 150, 'g'); srect(39, 151, 41, 151, 'g'); // caged cell
+  g(28, 32, 142);
+  g(14, 20, 138);                       // foot of the wind chute
+  // O4 wind chute (y 56..134)
+  srect(5, 66, 6, 130, '#'); srect(14, 66, 15, 130, '#');     // chute walls
+  srect(7, 60, 13, 138, 'w');                                 // updraft W2 (from ledge level; lets go a little above the walls)
+  srect(7, 88, 7, 93, '>'); srect(13, 74, 13, 79, '<'); srect(7, 104, 7, 108, '>'); srect(13, 116, 13, 120, '<');
+  g(16, 24, 62);                        // ledge beside the chute top
+  // O5 the last light (y 0..55)
+  g(34, 39, 48);
+  sput(48, 40, 'o');
+  g(55, 59, 36);
+  srect(64, 20, 67, 34, 'w');           // short updraft
+  g(70, 76, 18); sput(73, 17, '*');
+  sput(84, 12, 'o');
+  g(90, 97, 8);
+  sput(94, 7, 'H');                     // the gate to the outside
 
   const ROWS = G.map((r) => r.join(''));
   const SIGNS = {
@@ -223,12 +271,19 @@
   for (let y = 312; y <= 326; y += 4) SCORCH.push([0, y, 1]);      // world's left edge, by the start
   for (let y = 200; y <= 230; y += 6) SCORCH.push([43, y, 1]);     // the pillar in the void
   for (let y = 44; y <= 60; y += 4) SCORCH.push([138, y, -1]);     // beside the summit wall
-  // record shard logs, keyed by tile "x,y"
+  // sky (outside) records and relays, in map rows
+  const SKY_RECORDS = {
+    '133,221': '外は、静かだった。\n風だけが、上へ上へと流れていた。',
+    '73,17': 'ここまで来た。\nそれでも、まだ上がある気がした。',
+  };
+  const SKY_WAYPOINTS = [[124, 239, '王冠'], [99, 151, '残骸の海'], [16, 137, '風の口'], [20, 61, '風の上'], [92, 7, '外']];
+  // record shard logs, keyed by tile "x,y" (tower-part rows)
   const RECORDS = {
-    '53,318': '焦げた壁を見たら、銃口を押し当てて撃て。\n反動は、ずっと強くなる。',
+    '53,318': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
+    '120,297': '塔の外壁に、焦げた跡がある。\n銃口を押し当てて、宙で撃て。反動は、ずっと強くなる。',
     '108,309': '光の届くあいだだけ、見える道がある。\n暗がりに向けて、撃ってみろ。',
     '76,293': '青い光は、撃っても満ちる。\n宙に浮かぶ光を、下へ撃て。撃つたび、昇れる。',
-    '42,312': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
+    '42,312': '下を見るな。\n落ちた者は、みな同じ場所に戻される。',
     '8,309': '間を置かずに撃て。\n勢いは、重なる。',
     '136,286': '最上層の天井は、砕岩弾でも崩れない。\nもっと強い反動と一緒なら、あるいは。',
     '25,192': '塔の外に出た者は、少ない。\n戻れた者は、もっと少ない。',
@@ -239,14 +294,22 @@
   const EXTRA_SIGNS = [
     [78, 293, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
     [102, 239, '塔の中は、ここで塞がれている。\n外を回れ。落ちれば、地の底まで。'],
+    [129, 3, '天井の上。…塔は、ここで終わっている。\nその先は、空だ。'],
   ];
   // relay terminals: touch to activate, then transfer between them from the pause menu. [tile x, tile y, name]
   const WAYPOINTS = [
     [7, 327, '目覚めの床'], [126, 323, '塔の入口'], [123, 297, '鋳造層'], [124, 239, '煙突の頂'],
     [106, 239, '虚空の縁'], [40, 189, '柱の頂'], [106, 183, '帰還口'], [128, 142, '硝子の間'],
-    [135, 127, '庭'], [135, 65, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
+    [135, 127, '庭'], [135, 65, '強装の足場'], [125, 39, '最上層'], [127, 3, '天井の上'],
   ];
-  const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS, WAYPOINTS };
+  // lists above are written in tower-part coordinates; shift them into map rows
+  const SCORCH_M = SCORCH.map(([x, y, sd]) => [x, y + OY, sd]);
+  const RECORDS_M = {};
+  for (const k in RECORDS) { const [x, y] = k.split(',').map(Number); RECORDS_M[x + ',' + (y + OY)] = RECORDS[k]; }
+  Object.assign(RECORDS_M, SKY_RECORDS);
+  const EXTRA_M = EXTRA_SIGNS.map(([x, y, t]) => [x, y + OY, t]);
+  const WAY_M = WAYPOINTS.map(([x, y, n]) => [x, y + OY, n]).concat(SKY_WAYPOINTS);
+  const API = { ROWS, OY, SIGNS, SCORCH: SCORCH_M, RECORDS: RECORDS_M, EXTRA_SIGNS: EXTRA_M, WAYPOINTS: WAY_M };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.LEVEL = API;
 })(typeof window !== 'undefined' ? window : globalThis);

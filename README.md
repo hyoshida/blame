@@ -6,7 +6,7 @@
 
 ```sh
 npm run build   # src/ を 1 ファイルに inline → dist/index.html
-npm run solve   # ソルバーで頂上・外まで到達可能か検証（~20分）
+npm run solve   # ソルバーで頂上・外まで到達可能か検証（~25分）
                 #   --full      記録片の回収も含めて全域を再探索
                 #   --no-blast  壁撃ちを使わない道具だけのルートを検証（CI はこれ）
                 #   --trace x,y 指定タイルの記録片に最初に届いた手順を表示
@@ -18,7 +18,7 @@ NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表
 
 | ファイル | 内容 |
 | --- | --- |
-| `src/level.js` | マップ（140×330 タイル）と看板・記録片・中継点。座標指定で区画を配置 |
+| `src/level.js` | マップ（140×580 タイル。上 250 行が「外」）と看板・記録片・中継点。座標指定で区画を配置 |
 | `src/physics.js` | 物理・弾の挙動・道具の効果。ゲームとソルバーで共有 |
 | `src/game.js` | 描画・入力・音・セーブ |
 | `tools/solve.mjs` | 到達可能性ソルバー（CI でも実行） |

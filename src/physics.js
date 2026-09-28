@@ -21,6 +21,8 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
+    WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
+    WIND_MAX: 3.4,     // top speed an updraft carries you
     BLAST: 1.45,       // recoil multiplier when the muzzle is pressed against a wall (never explained in-game)
     BLAST_DIST: 12,    // px along the shot from the player's centre to the wall face
   };
@@ -43,6 +45,7 @@
   // Tiles: # rock  = ice  g glass  x crack  m metal (always bounces bullets)  c cloud  d door
   //        T target  t target (hit)  h hidden walkway (solid, invisible; bullets pass)  ^v<> spikes
   //        X reinforced crack: only breaker rounds fired with magnum recoil break it
+  //        w updraft (air that carries you upward)
   const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1 };
   const isSolid = (c) => SOLID[c] === 1;
   const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't';
@@ -248,6 +251,10 @@
       if (Math.abs(p.vx) < 0.03) p.vx = 0;
     } else p.vx *= C.AIR_DRAG;
     p.vy = Math.min(p.vy + C.G, C.MAXFALL);
+    if (tileAt(L, Math.floor((p.x + C.PW / 2) / 8), Math.floor((p.y + C.PH / 2) / 8)) === 'w') {
+      p.vy = Math.max(p.vy - C.WIND, -C.WIND_MAX);
+      p.grounded = false;
+    }
 
     if (moveX(L, p, p.vx)) p.vx = 0;
     if (moveY(L, p, p.vy)) p.vy = 0;
