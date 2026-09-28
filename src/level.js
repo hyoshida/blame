@@ -1,70 +1,88 @@
 // Level map, built with a tiny painter so sections can be placed by coordinates.
-// World: 140 x 172 tiles. An open field runs along the bottom (x 1-115), the tower
-// rises at x 120-137, and a hidden sky ("heaven") sits above the summit.
+// World: 140 x 330 tiles. An open field runs along the bottom (x 1-115), the tower rises at
+// x 120-137, a long detour leaves the tower across the void (x ~20-115, rows ~180-245), and a
+// hidden sky ("outside") sits above the summit.
 //
-// Tiles:  # rock   = ice   g glass (bullets pass)   x crack (breaker rounds break it)
-//         X reinforced crack (breaker + magnum together)   m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)   c cloud   d door   T target (shoot: opens nearby doors)
-//         ^ v < > spikes (touch = miss)
-// Things: o crystal (refill: touch it OR shoot it)   * feather (collectible)
-//         A spare magazine (+1 air shot)   B breaker rounds   K piercing rounds (glass)   M magnum rounds
-//         1-9 sign   F summit flag   H heaven gate   P start
+// Tiles:  # rock   = wet slick floor   g glass (bullets pass with piercing rounds)
+//         x crack (breaker rounds)   X reinforced crack (breaker + magnum together)
+//         m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)
+//         c girder fragment   d door   T sensor (shoot: opens nearby doors)   ^ v < > shards (touch = miss)
+// Things: o energy cell (refill: touch it OR shoot it)   * record shard (collectible)
+//         A spare magazine (+1 air shot)   B breaker rounds   K piercing rounds   M magnum rounds
+//         1-9 terminal   F summit flag   H outside gate   P start
 //
-// Progression (item-only route): start with one air shot. The field has no items.
-// Tower: a red sensor opens a side vault with a spare magazine; the crack vault beside it shows a
-// glowing item you cannot reach yet. Higher, a nook in the ice holds breaker rounds -> go back down
-// and break the vault for piercing rounds. The tall shaft needs the extra magazine; the glass-boxed
-// sensor needs piercing rounds; the garden cage too. Magnum rounds carry you to the summit.
-// Breaker + magnum together break reinforced cracks (a vault by the start holds a second magazine).
+// Route (item-only): field and foundry with a single shot -> magazine -> wet decks -> shard chimney ->
+// breaker rounds -> out across the void, up a pillar, back through a cracked wall -> glass hall ->
+// piercing rounds -> glass sensor door -> cell garden -> magazine -> tall shafts -> magnum rounds ->
+// summit wall -> reinforced ceiling (breaker + magnum) -> outside.
+// Every item sits out in the open on the way. Exactly one pickup is tucked into a gap: a record shard.
 (function (root) {
-  const W = 140, H = 172;
+  const W = 140, H = 330;
   const G = [...Array(H)].map(() => Array(W).fill('#'));
   const rect = (x0, y0, x1, y1, c) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) G[y][x] = c; };
   const put = (x, y, c) => { G[y][x] = c; };
   const stamp = (x0, y0, rows) => rows.forEach((r, j) => [...r].forEach((c, i) => { if (c !== ' ') G[y0 + j][x0 + i] = c; }));
 
-  // ---------------------------------------------------------------- field
-  rect(1, 0, 115, 169, '.');            // open sky over the field
-  const ground = (x0, x1, top) => rect(x0, top, x1, 171, '#');
-  ground(1, 12, 170);                   // start
-  ground(13, 22, 168);                  // small step
-  ground(23, 30, 166);                  // another step
-  ground(31, 34, 169);                  // shallow dip (4 wide)
-  ground(35, 42, 166);
-  ground(43, 48, 169);                  // dip (6 wide)
-  ground(49, 58, 166);                  // magazine here
-  ground(59, 73, 170);                  // 15-wide: needs the air shot
-  rect(59, 169, 73, 169, '^');          //   (spikes: a miss just returns you to the ledge)
-  ground(74, 78, 166);
-  ground(79, 94, 170);                  // 16-wide with a floating crystal (safe pit)
-  ground(95, 100, 166);
-  ground(101, 113, 170);                // 13-wide: a low crystal to shoot while crossing
-  ground(114, 115, 166);
-  put(107, 168, 'o');
-  put(86, 161, 'o');
-  // feathers: one sealed in a floating rock (needs breaker), one on a high sky ledge
-  stamp(40, 154, [' ### ', '##*##', ' #x# ']);
-  stamp(7, 151, ['.*.', '###']);
-  // ---- knowledge chain (never explained; the records hint at the next step)
-  // R1: easy ledge right after the first magazine -> tells about wall blasts
-  stamp(52, 160, ['###']); put(53, 159, '*');
-  // R2: high ledge near the tower's outer wall; reachable early only by a wall blast off the scorched wall
-  stamp(107, 152, ['####']); put(108, 151, '*');
-  // hidden walkway from R2 up and left to R3 (tells about shooting cells below you)
-  stamp(99, 148, ['hhh']); stamp(91, 144, ['hhh']); stamp(83, 140, ['hhh']); stamp(75, 136, ['hhhh']); put(76, 135, '*');
-  // reinforced vault right by the start: seen at once, opened only at the very end (breaker + magnum)
-  stamp(18, 164, ['####', 'X..#', 'X.A#', '####']);
-  put(2, 169, 'P');
-  put(4, 169, '1');
-  put(10, 169, '2');
-  put(38, 165, '3');
-  put(56, 165, '4');
-  put(75, 165, '5');
-  put(98, 165, '6');
+  // ================================================================ field (one shot only)
+  rect(1, 0, 115, 327, '.');            // the open void over the field
+  const ground = (x0, x1, top) => rect(x0, top, x1, H - 1, '#');
+  ground(1, 12, 328);                   // start
+  ground(13, 22, 326);                  // small step
+  ground(23, 30, 324);                  // another step
+  ground(31, 34, 327);                  // shallow dip
+  ground(35, 42, 324);
+  ground(43, 48, 327);                  // dip
+  ground(49, 58, 324);
+  ground(59, 65, 328);                  // shard pit (a miss only sends you back to the ledge)
+  rect(59, 327, 65, 327, '^');
+  ground(66, 78, 324);
+  ground(79, 92, 328);                  // wide dip with a floating cell: touch it for a second shot
+  put(85, 320, 'o');
+  ground(93, 100, 324);
+  ground(101, 113, 328);                // wide dip with a low cell: shoot it while crossing
+  put(107, 326, 'o');
+  ground(114, 115, 324);
+  put(2, 327, 'P');
+  put(4, 327, '1');
+  put(10, 327, '2');
+  put(38, 323, '3');
+  put(56, 323, '4');
+  put(76, 323, '5');
+  put(97, 323, '6');
+  rect(116, 319, 119, 323, '.');        // doorway into the tower
 
-  // ---------------------------------------------------------------- tower (x 120-137)
-  rect(116, 161, 119, 165, '.');        // doorway
+  // ---- knowledge chain in the field (never explained; each record hints at the next step)
+  stamp(52, 319, ['###']); put(53, 318, '*');                       // R1: easy -> wall blasts
+  stamp(107, 310, ['####']); put(108, 309, '*');                    // R2: by the scorched tower wall
+  stamp(99, 306, ['hhh']); stamp(91, 302, ['hhh']); stamp(83, 298, ['hhh']); stamp(75, 294, ['hhhh']);
+  put(76, 293, '*');                                                // R3: end of the hidden walkway
+  stamp(7, 309, ['.*.', '###']);                                    // high by the start wall
+  stamp(40, 312, ['  *  ', ' ### ']);                               // floating slab over the dips
+
+  // ================================================================ the void detour (rows ~180-245)
+  // out of the tower on the left at the top of the chimney, across, up a pillar, back in lower-right
+  rect(116, 236, 119, 239, '.');        // exit from the chimney top room
+  rect(100, 240, 115, 241, '#');        // P1: the ledge outside
+  rect(85, 238, 90, 239, '#');          // P2
+  put(77, 233, 'o');                    // floating cell over the next gap
+  rect(64, 236, 69, 237, '#');          // P3
+  put(57, 244, 'o');                    // low cell: shoot it while crossing
+  rect(44, 238, 50, 239, '#');          // P4, at the foot of the pillar
+  rect(36, 190, 43, 240, '#');          // the pillar
+  for (const y of [231, 224, 217, 210, 203, 196]) rect(44, y, 47, y, '#');   // footholds up its face
+  for (const y of [227, 213, 199]) put(44, y, '>');                         // shards between them
+  stamp(24, 193, ['###']); put(25, 192, '*');                       // record off the pillar top
+  rect(53, 188, 57, 188, '#');          // P5
+  put(64, 184, 'o');
+  rect(70, 186, 73, 186, '#');          // P6
+  put(81, 182, 'o');
+  rect(88, 186, 91, 186, '#');          // P7
+  rect(100, 184, 115, 185, '#');        // P8: back at the tower
+  rect(116, 179, 119, 183, 'x');        // the way back in is a cracked wall (breaker rounds)
+
+  // ================================================================ tower (x 120-137)
   const T = {
-    // heaven (above the cracked ceiling)
+    // ---- outside
     3: '........H.........',
     4: '.......ccc........',
     8: '...o..............',
@@ -78,103 +96,155 @@
     26: '..cc..........*...',
     28: '.......o..........',
     31: '............o.....',
-    35: '######xxxxxx######',
-    // summit
+    // ---- reinforced ceiling: breaker rounds fired with magnum recoil
+    35: '######XXXXXX######',
+    // ---- summit
     39: '......F.9.........',
     40: '.....#####........',
-    // magnum ledge (garden top)
+    // ---- summit wall (open; needs magnum rounds)
     65: '.............M....',
     66: '...........######.',
-    // caged-crystal garden (needs a remote refill)
-    67: '.*................',
-    72: '.^^^..............',
-    73: '.ggg..............',
-    74: '.gog..............',
-    75: '.ggg..............',
-    76: '######dddd########',
-    // glass room: the sensor sits in a glass box (needs piercing rounds)
-    78: '.............ggg..',
-    79: '.............gTg..',
-    80: '.............ggg..',
-    83: '....##############',
-    // tall shaft (needs 3 shots)
-    // hidden step: lets someone who knows skip the second magazine
-    90: '.......hhh........',
-    97: '######............',
-    // nook at the top of the ice: breaker rounds (a detour, not on the way up)
-    99: '..............####',
-    100: '................B#',
-    101: '..............####',
-    // ice
-    102: '....=====.........',
-    106: '...........=======',
-    110: '###...............',
-    111: '.*x...............',
-    112: '###...............',
-    114: '.......======.....',
-    118: '===...............',
-    122: '..........======..',
-    // cracked ceiling: the way up is on the right; the cracks are only a shortcut
-    127: '######xxxxxx......',
-    131: '#####.............',
-    133: '......#####.......',
-    137: '.............#####',
-    // lower tower
-    142: '######....########',
-    144: 'T.................',
-    145: '...............8..',
-    146: '.............#####',
-    150: '.......######.....',
-    // side vault (right) opened by the red sensor: spare magazine
-    152: '...............###',
-    153: '...............d.#',
-    154: '######.........dA#',
-    // crack vault (left): piercing rounds glow inside, out of reach until you have breaker rounds
-    155: '###............###',
-    156: '..x...............',
-    157: '.Kx...............',
-    158: '###..######.......',
-    162: '............######',
-    165: '..7...............',
+    // ---- tall shafts (three shots)
+    80: '..######..........',
+    84: '>.................',
+    85: '>.................',
+    86: '..........hhh.....',
+    88: '>.................',
+    89: '>.................',
+    93: '.........######...',
+    97: '.................<',
+    98: '.................<',
+    100: '............hhh...',
+    101: '.................<',
+    102: '.................<',
+    107: '..######..........',
+    // ---- cell garden (behind the glass-sensor door)
+    114: '..........######..',
+    121: '....######........',
+    127: '.............A....',
+    128: '...........######.',
+    131: '................*.',
+    132: '...............##.',
+    136: '.^^^..............',
+    137: '.ggg..............',
+    138: '.gog..............',
+    139: '.ggg..............',
+    140: '######dddd########',
+    // ---- glass hall (piercing rounds at the top)
+    142: '.....K............',
+    143: '...######.........',
+    144: '.............ggg..',
+    145: '.............gTg..',
+    146: '.............ggg..',
+    150: '..........######..',
+    157: '..######..........',
+    160: '...............ggg',
+    161: '...............gog',
+    162: '...............ggg',
+    164: '.........######...',
+    171: '...######.........',
+    174: 'ggg...............',
+    175: 'gog...............',
+    176: 'ggg...............',
+    178: '..........######..',
+    // ---- sealed section: the way on is outside, across the void
+    // (rows 184-235 are solid; filled below)
+    // ---- chimney top room: breaker rounds
+    239: '..B...............',
+    // ---- shard chimney (two shots; zigzag ledges)
+    240: '######......######',
+    241: '######......######',
+    242: '######......######',
+    243: '######......######',
+    244: '######......######',
+    245: '#########...######',
+    246: '######>.....######',
+    247: '######>.....######',
+    248: '######......######',
+    249: '######...#########',
+    250: '######.....<######',
+    251: '######.....<######',
+    252: '######......######',
+    253: '#########...######',
+    254: '######>.....######',
+    255: '######>.....######',
+    256: '######......######',
+    257: '######...#########',
+    258: '######.....<######',
+    259: '######.....<######',
+    260: '######......######',
+    261: '#########...######',
+    262: '######>.....######',
+    263: '######>.....######',
+    264: '######......######',
+    265: '######...#########',
+    266: '######......######',
+    267: '######......######',
+    268: '######......######',
+    // ---- wet decks (two shots)
+    272: '......======......',
+    276: '..........======..',
+    283: '..======..........',
+    285: '...............###',
+    286: '...............x*.',
+    287: '...............###',
+    290: '.........=======..',
+    // ---- foundry (one shot): the sensor door, then the first magazine
+    297: '..A...............',
+    298: '#####.............',
+    300: '######dddd########',
+    301: 'T.................',
+    303: '.........8........',
+    304: '....######........',
+    308: '.......######.....',
+    312: '######............',
+    316: '.....######.......',
+    320: '............######',
+    323: '..7...............',
   };
-  for (let y = 1; y <= 165; y++) stamp(120, y, [T[y] || '..................']);
+  for (let y = 184; y <= 235; y++) T[y] = '##################';
+  for (let y = 1; y <= 323; y++) stamp(120, y, [T[y] || '..................']);
 
   const ROWS = G.map((r) => r.join(''));
-  // soot on wall faces where a wall blast is useful: [tile x, tile y, side the soot faces (-1 left, 1 right)]
-  const SCORCH = [];
-  for (let y = 152; y <= 164; y += 3) SCORCH.push([116, y, -1]);   // tower outer wall, field side
-  for (let y = 154; y <= 168; y += 4) SCORCH.push([0, y, 1]);      // world's left edge, by the start
-  for (let y = 44; y <= 60; y += 4) SCORCH.push([138, y, -1]);     // beside the summit climb
-  // record shard logs, keyed by tile "x,y"
-  const RECORDS = {
-    '53,159': '焦げた壁を見たら、銃口を押し当てて撃て。\n反動は、ずっと強くなる。',
-    '108,151': '光の届くあいだだけ、見える道がある。\n暗がりに向けて、撃ってみろ。',
-    '76,135': '青い光は、撃っても満ちる。\n宙に浮かぶ光を、下へ撃て。撃つたび、昇れる。',
-    '42,155': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
-    '8,151': '間を置かずに撃て。\n勢いは、重なる。',
-    '121,111': '最上層で、脆い天井を見た。\n隙間から、光が漏れていた。',
-    '121,67': '砕岩弾でも崩れない壁がある。\nもっと強い反動と一緒なら、あるいは。',
-    '134,26': '外に出た。\nこの記録を読む者が、次の私だ。',
-  };
   const SIGNS = {
     1: '指を引いて、放せ。その向きに撃つ。\n反動が、お前を反対へ運ぶ。',
     2: '深く引くほど、遠くへ。\n足もとを撃てば、身体は浮く。',
-    3: '宙でも、もう一度だけ撃てる。\n弾は、地に足をつけると満ちる。',
-    4: 'この先は、宙で二度目を撃て。\n落ちても、少し戻されるだけだ。',
-    5: '青い光に触れれば、弾は満ちる。\n宙にいても。',
+    3: '――まだ、宙では撃てない。\n一発で届く距離を、見極めろ。',
+    4: '破片に触れても、\n少し前へ戻されるだけだ。',
+    5: '青い光に触れれば、\n宙でもう一度撃てる。',
     6: '下で光っている。\n…触れずとも、届くものがある。',
     7: 'ここより上へ。\n落ちても、終わりはしない。\n――終わることは、ない。',
     8: '赤い眼が、こちらを見ている。\n閉ざしたのは、あれだ。',
     9: '最上層――のはずだった。\n天井の亀裂から、何かが漏れている。',
   };
+  // soot on wall faces where a wall blast is useful: [tile x, tile y, side the soot faces (-1 left, 1 right)]
+  const SCORCH = [];
+  for (let y = 310; y <= 322; y += 3) SCORCH.push([116, y, -1]);   // tower outer wall, field side
+  for (let y = 312; y <= 326; y += 4) SCORCH.push([0, y, 1]);      // world's left edge, by the start
+  for (let y = 200; y <= 230; y += 6) SCORCH.push([43, y, 1]);     // the pillar in the void
+  for (let y = 44; y <= 60; y += 4) SCORCH.push([138, y, -1]);     // beside the summit wall
+  // record shard logs, keyed by tile "x,y"
+  const RECORDS = {
+    '53,318': '焦げた壁を見たら、銃口を押し当てて撃て。\n反動は、ずっと強くなる。',
+    '108,309': '光の届くあいだだけ、見える道がある。\n暗がりに向けて、撃ってみろ。',
+    '76,293': '青い光は、撃っても満ちる。\n宙に浮かぶ光を、下へ撃て。撃つたび、昇れる。',
+    '42,312': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
+    '8,309': '間を置かずに撃て。\n勢いは、重なる。',
+    '136,286': '最上層の天井は、砕岩弾でも崩れない。\nもっと強い反動と一緒なら、あるいは。',
+    '25,192': '塔の外に出た者は、少ない。\n戻れた者は、もっと少ない。',
+    '136,131': '硝子の向こうで、青い光が眠っている。\n貫く弾なら、届くだろう。',
+    '134,26': '外に出た。\nこの記録を読む者が、次の私だ。',
+  };
   // extra terminals with their own text: [tile x, tile y, text]
   const EXTRA_SIGNS = [
-    [78, 135, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
+    [78, 293, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
+    [102, 239, '塔の中は、ここで塞がれている。\n外を回れ。落ちれば、地の底まで。'],
   ];
   // relay terminals: touch to activate, then transfer between them from the pause menu. [tile x, tile y, name]
   const WAYPOINTS = [
-    [7, 169, '目覚めの床'], [126, 165, '塔の入口'], [121, 126, '砕けた天井'], [124, 96, '冷たい縦穴'],
-    [132, 82, '硝子の間'], [135, 65, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
+    [7, 327, '目覚めの床'], [126, 323, '塔の入口'], [123, 297, '鋳造層'], [124, 239, '煙突の頂'],
+    [106, 239, '虚空の縁'], [40, 189, '柱の頂'], [106, 183, '帰還口'], [128, 142, '硝子の間'],
+    [135, 127, '庭'], [135, 65, '強装の足場'], [125, 39, '最上層'], [127, 3, '外'],
   ];
   const API = { ROWS, SIGNS, SCORCH, RECORDS, EXTRA_SIGNS, WAYPOINTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

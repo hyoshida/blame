@@ -32,7 +32,7 @@
     K: { name: '貫通弾', desc: 'ガラスの向こうへ、届く。' },
     M: { name: '強装弾', desc: '反動が、身体をもっと遠くへ運ぶ。' },
   };
-  const newAbil = () => ({ ammo: 1, breaker: false, pierce: false, magnum: false }); // start with one air shot
+  const newAbil = () => ({ ammo: 0, breaker: false, pierce: false, magnum: false }); // start with a single shot (no air shots)
   function grantItem(abil, type) {
     if (type === 'A') abil.ammo = Math.min(C.MAX_AMMO, abil.ammo + 1);
     else if (type === 'B') abil.breaker = true;

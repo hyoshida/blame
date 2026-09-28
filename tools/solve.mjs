@@ -5,6 +5,9 @@
 // nothing new is found. With breaker rounds, cracks count as already broken.
 // Exits 1 if the summit flag or the heaven gate cannot be reached.
 // Usage: node tools/solve.mjs [--samples 1] [--seed N] [--quiet] [--full] [--no-blast]
+// Zone test: --from x,y [--abil ammo=2,breaker,pierce,magnum] [--open] [--goal ROW] [--print y0,y1,x0,x1]
+//   starts at tile x,y with those abilities (items not collected), --open opens every door,
+//   stops as soon as a surface at or above ROW is reached, and prints that part of the map.
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const Phys = require('../src/physics.js');
@@ -24,11 +27,14 @@ const rAng = () => (rnd() < 0.8 ? (0.03 + rnd() * 0.94) * Math.PI : rnd() * Math
 const rDown = () => (0.5 + (rnd() - 0.5) * 0.5) * Math.PI;
 const rPow = () => (rnd() < 0.4 ? 1 : C.MINPOW + rnd() * (1 - C.MINPOW));
 const MAXF = 300;
+const sarg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
+const FROM = sarg('--from'), GOAL = sarg('--goal'), ABIL = sarg('--abil'), PRINT = sarg('--print'), OPEN = process.argv.includes('--open');
 
 const L = Phys.makeLevel(ROWS);
 const base = L.grid.map((r) => r.slice());
 const abil = Phys.newAbil();
-const itemsGot = new Set(), targetsHit = new Set();
+if (ABIL) for (const part of ABIL.split(',')) { const [k, v] = part.split('='); abil[k] = v === undefined ? true : +v; }
+const itemsGot = new Set(), targetsHit = new Set(OPEN ? L.targets.map((t, i) => i) : []);
 function applyPhaseWorld() {
   for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
     let c = base[y][x];
@@ -173,7 +179,8 @@ function plans(tx, ty) {
   return out;
 }
 
-const startNode = key(Math.floor(L.start.x / 8), Math.floor(L.start.y / 8));
+const startNode = FROM ? key(+FROM.split(',')[0], +FROM.split(',')[1]) : key(Math.floor(L.start.x / 8), Math.floor(L.start.y / 8));
+let goalHit = null;
 const seen = new Set([startNode]);
 const t0 = Date.now();
 for (;;) {
@@ -192,7 +199,8 @@ for (;;) {
     const next = new Set();
     for (const d of [-1, 1]) if (surface(tx + d, ty)) next.add(key(tx + d, ty));
     for (const plan of plans(tx, ty)) { const r = sim(tx, ty, plan); if (r !== null) next.add(r); }
-    for (const n of next) if (!seen.has(n)) { seen.add(n); queue.push(n); }
+    for (const n of next) if (!seen.has(n)) { seen.add(n); queue.push(n); if (GOAL && Math.floor(n / L.w) <= +GOAL && !goalHit) goalHit = [n % L.w, Math.floor(n / L.w)]; }
+    if (goalHit) break;
   }
   let changed = false;
   focusRow = -1; focusRows = [];
@@ -206,7 +214,7 @@ for (;;) {
   if (abil.pierce && !before.pierce) focusRows.push(...rowsOf((c) => c === 'g' || c === 'T'));
   if (abil.ammo !== before.ammo || abil.magnum !== before.magnum) focusRows = null; // movement changed: look everywhere
   if (!QUIET) console.error(`phase ${phase}: ${seen.size} surfaces, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-  if (!changed) break;
+  if (!changed || FROM) break;
 }
 
 const out = L.grid.map((r) => r.slice());
@@ -216,6 +224,14 @@ L.relics.forEach((r, i) => { out[(r.y - 4) / 8][(r.x - 4) / 8] = found.relics.ha
 L.items.forEach((it, i) => { out[(it.y - 4) / 8][(it.x - 4) / 8] = itemsGot.has(i) ? it.type : it.type.toLowerCase(); });
 if (L.flag) out[L.flag.y / 8][L.flag.x / 8] = 'F';
 if (L.gate) out[L.gate.y / 8][L.gate.x / 8] = 'H';
+if (PRINT) {
+  const [y0, y1, x0, x1] = PRINT.split(',').map(Number);
+  console.log(out.slice(y0, y1 + 1).map((r, i) => String(i + y0).padStart(3) + ' ' + r.slice(x0, x1 + 1).join('')).join('\n'));
+}
+if (FROM) {
+  console.log(GOAL ? (goalHit ? `GOAL reached at ${goalHit}` : 'GOAL NOT reached') : '', `surfaces ${seen.size}, sims ${sims}, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  process.exit(!GOAL || goalHit ? 0 : 1);
+}
 if (!QUIET) {
   console.log('--- tower (x 114-139)');
   console.log(out.slice(0, 167).map((r, i) => String(i).padStart(3) + ' ' + r.slice(114).join('')).join('\n'));

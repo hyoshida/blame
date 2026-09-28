@@ -6,17 +6,19 @@
 
 ```sh
 npm run build   # src/ を 1 ファイルに inline → dist/index.html
-npm run solve   # ソルバーで頂上・天国まで到達可能か検証（~4分）
+npm run solve   # ソルバーで頂上・外まで到達可能か検証（~20分）
                 #   --full      記録片の回収も含めて全域を再探索
                 #   --no-blast  壁撃ちを使わない道具だけのルートを検証（CI はこれ）
                 #   --trace x,y 指定タイルの記録片に最初に届いた手順を表示
+                #   --from x,y --abil ammo=1,breaker --open --goal 239 --print y0,y1,x0,x1
+                #               区間テスト：指定地点・能力から指定の行まで届くかだけを数十秒で確認
 npm run serve   # dist をローカル配信
 NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表示のスモークテスト
 ```
 
 | ファイル | 内容 |
 | --- | --- |
-| `src/level.js` | マップ（140×172 タイル）と看板の文言。座標指定で部屋を配置 |
+| `src/level.js` | マップ（140×330 タイル）と看板・記録片・中継点。座標指定で区画を配置 |
 | `src/physics.js` | 物理・弾の挙動・道具の効果。ゲームとソルバーで共有 |
 | `src/game.js` | 描画・入力・音・セーブ |
 | `tools/solve.mjs` | 到達可能性ソルバー（CI でも実行） |

@@ -24,7 +24,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
-  const SAVE_KEY = 'recoilclimb.save.v3', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
+  const SAVE_KEY = 'recoilclimb.save.v4', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
   const prefs = Object.assign({ sound: true, haptics: true }, store.get(PREF_KEY, {}));
   let best = store.get(BEST_KEY, {}); // {summit, heaven} in frames
 
