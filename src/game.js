@@ -22,7 +22,7 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
   const SAVE_KEY = 'recoilclimb.save.v3', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
-  const prefs = Object.assign({ sound: true }, store.get(PREF_KEY, {}));
+  const prefs = Object.assign({ sound: true, haptics: true }, store.get(PREF_KEY, {}));
   let best = store.get(BEST_KEY, {}); // {summit, heaven} in frames
 
   // ---------------------------------------------------------------- utils
@@ -248,7 +248,64 @@
     relic() { [784, 988, 1175, 1568].forEach((f, i) => tone({ f, d: 0.14, type: 'triangle', v: 0.1, delay: i * 0.07 })); },
     win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.18, v: 0.07, delay: i * 0.1 })); },
   };
-  const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* ignore */ } };
+  // ---------------------------------------------------------------- haptics
+  // Android: Vibration API with patterns (durations stand in for strength).
+  // iOS Safari has no Vibration API, but toggling an <input type="checkbox" switch>
+  // (Safari 17.4+) plays the system tick. It is one fixed tick, most reliable inside a
+  // touch handler, so pulses in a pattern become separate ticks.
+  const Haptics = (() => {
+    const canVibrate = typeof navigator.vibrate === 'function';
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let lastTick = 0;
+    function iosTick() {
+      const now = performance.now();
+      if (now - lastTick < 45) return;
+      lastTick = now;
+      try {
+        const label = document.createElement('label');
+        label.setAttribute('aria-hidden', 'true');
+        label.style.display = 'none';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.setAttribute('switch', '');
+        label.appendChild(input);
+        document.head.appendChild(label);
+        label.click();
+        document.head.removeChild(label);
+      } catch (e) { /* ignore */ }
+    }
+    function play(pattern, iosTicks) {
+      if (!prefs.haptics) return;
+      const arr = Array.isArray(pattern) ? pattern : [pattern];
+      if (canVibrate) { try { navigator.vibrate(arr); } catch (e) { /* ignore */ } return; }
+      if (!isIOS || iosTicks === 0) return;
+      let t = 0, n = 0;
+      const max = iosTicks == null ? 3 : iosTicks;
+      for (let i = 0; i < arr.length && n < max; i += 2, n++) {
+        if (t === 0) iosTick(); else setTimeout(iosTick, t);
+        t += arr[i] + (arr[i + 1] || 0);
+      }
+    }
+    return { play, supported: canVibrate || isIOS };
+  })();
+  // Named feel for each moment. [on, off, on, ...] in ms; second value = max iOS ticks.
+  const HAPTIC = {
+    aimFull: () => Haptics.play(8, 1),
+    shot: (pow, magnum) => Haptics.play(Math.round(10 + pow * 16 + (magnum ? 12 : 0)), 1),
+    empty: () => Haptics.play([4, 40, 4], 1),
+    land: (v) => { if (v > 3.6) Haptics.play(24, 1); else if (v > 2.2) Haptics.play(10, 0); },
+    crystal: () => Haptics.play([8, 30, 14], 2),
+    remote: () => Haptics.play([8, 25, 8, 25, 18], 3),
+    clank: () => Haptics.play(6, 0),
+    crumble: () => Haptics.play([35, 25, 20], 2),
+    target: () => Haptics.play([15, 50, 40], 2),
+    die: () => Haptics.play([50, 30, 20], 2),
+    respawn: () => Haptics.play(8, 1),
+    relic: () => Haptics.play([10, 40, 10, 40, 30], 3),
+    item: () => Haptics.play([20, 60, 20, 60, 20, 60, 90], 3),
+    summit: () => Haptics.play([40, 60, 40, 60, 120], 3),
+    heaven: () => Haptics.play([60, 80, 60, 80, 60, 80, 200], 3),
+  };
 
   // ---------------------------------------------------------------- game state
   let state = 'title';
@@ -362,12 +419,18 @@
     stick.x = pt.x; stick.y = pt.y;
     const v = stickVec();
     if (v) { aim = { x: v.dx, y: v.dy }; pow = v.pow; }
+    const full = !!v && v.pow >= 0.999;
+    if (full && !stick.full) HAPTIC.aimFull();
+    stick.full = full;
   });
   function endStick(e, cancel) {
     if (!stick || e.pointerId !== stick.id) return;
     const v = stickVec();
     stick = null;
-    if (!cancel && v && state === 'play') pendingFire = { dx: v.dx, dy: v.dy, pow: v.pow, ttl: 6 };
+    if (!cancel && v && state === 'play') {
+      pendingFire = { dx: v.dx, dy: v.dy, pow: v.pow, ttl: 6 };
+      if (p && !p.dead) { if (p.ammo > 0) HAPTIC.shot(v.pow, abil.magnum); else HAPTIC.empty(); }
+    }
   }
   cv.addEventListener('pointerup', (e) => endStick(e, false));
   cv.addEventListener('pointercancel', (e) => endStick(e, true));
@@ -395,14 +458,14 @@
       else if (h.t === 'break') {
         const bx = h.tx * 8 + 4, by = h.ty * 8 + 4;
         for (let i = 0; i < 14; i++) parts.push({ x: bx + rnd(-3, 3), y: by + rnd(-3, 3), vx: rnd(-1.2, 1.2), vy: rnd(-1.8, 0.3), g: 0.12, life: rnd(30, 60), col: ['#ab5236', '#6b3a3a', '#1a1020'][i % 3], collide: true });
-        SFX.crumble(); shake = Math.max(shake, 5); buzz(20);
+        SFX.crumble(); shake = Math.max(shake, 5); later(HAPTIC.crumble);
       } else if (h.t === 'crystal') {
         burst(h.x, h.y, 12, ['#00e436', '#fff1e8'], 1.4, 0, 16);
         toast('補給！', h.x, h.y - 8, '#00e436', 50);
-        SFX.crystal();
+        SFX.crystal(); later(HAPTIC.remote);
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
-        SFX.clank();
+        SFX.clank(); later(HAPTIC.clank);
         const key = h.t;
         if (!hintSeen[key]) { hintSeen[key] = 1; toast(h.t === 'glass' ? 'ガラスに弾かれた' : 'かたい…いまは壊せない', h.x, h.y - 8, '#c2c3c7', 90); }
       } else if (h.t === 'target') {
@@ -412,14 +475,16 @@
         toast('ガコン！', h.x, h.y - 8, '#ff77a8', 60);
         const d0 = t.doors[0];
         if (d0) toast('扉が開いた', d0[0] * 8 + 16, d0[1] * 8 - 4, '#ff77a8', 90);
-        SFX.door(); shake = Math.max(shake, 5); buzz(25);
+        SFX.door(); shake = Math.max(shake, 5); later(HAPTIC.target);
       }
     }
     burst(flash.x, flash.y, 4, ['#c2c3c7'], 0.4, -0.01, 16);
     parts.push({ x: cx, y: cy, vx: -e.dy * rnd(0.6, 1.2) * (Math.random() < 0.5 ? 1 : -1), vy: -1.6, g: 0.15, life: 50, col: '#ffa300', collide: true });
     shake = Math.max(shake, 2 + Math.round(pow * 2));
-    SFX.shot(pow); buzz(10);
+    SFX.shot(pow);
   }
+  // after a shot, let the release tick finish before the follow-up pattern
+  const later = (fn) => setTimeout(fn, 70);
   function isSafeSpot() {
     if (!p.grounded || Math.abs(p.vx) > 0.2) return false;
     const x0 = Math.floor(p.x / 8) - 1, x1 = Math.floor((p.x + C.PW) / 8) + 1;
@@ -438,7 +503,7 @@
       if (--deadT <= 0) {
         p = Phys.newPlayer(safe.x, safe.y, abil); p.grounded = true;
         burst(p.x + 3, p.y + 4, 10, ['#fff1e8', '#ffec27'], 1, 0, 14);
-        SFX.respawn();
+        SFX.respawn(); HAPTIC.respawn();
       }
       cameraFollow(0.08);
       return;
@@ -452,22 +517,23 @@
       if (e.t === 'shot') { shot = true; onShot(e); }
       else if (e.t === 'land') {
         if (e.v > 2) { burst(p.x + 3, p.y + C.PH, 5, ['#c2c3c7'], 0.7, 0.03, 12); SFX.land(); }
+        HAPTIC.land(e.v);
       } else if (e.t === 'die') {
         misses++; deadT = 40;
         burst(p.x + 3, p.y + 4, 16, ['#ff004d', '#fff1e8', '#ffec27'], 1.8, 0.04, 20);
         toast('ミス', p.x + 3, p.y - 6, '#ff004d', 50);
-        SFX.die(); shake = 6; buzz(40);
+        SFX.die(); shake = 6; HAPTIC.die();
         pendingFire = null;
       } else if (e.t === 'crystal') {
         burst(e.x, e.y, 10, ['#00e436', '#fff1e8'], 1.2, 0, 16);
-        SFX.crystal();
+        SFX.crystal(); HAPTIC.crystal();
       } else if (e.t === 'relic') {
         burst(e.x, e.y, 18, ['#fff1e8', '#ff77a8', '#ffec27'], 1.6, 0, 26);
         toast('羽根 ' + relicCount() + '/' + L.relics.length, e.x, e.y - 8, '#ff77a8', 90);
-        SFX.relic(); buzz(30); saveGame();
+        SFX.relic(); HAPTIC.relic(); saveGame();
       } else if (e.t === 'item') {
         burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
-        SFX.item(); buzz(60);
+        SFX.item(); HAPTIC.item();
         itemGet(e.type);
       } else if (e.t === 'flag') summit();
       else if (e.t === 'heaven') heaven();
@@ -809,7 +875,11 @@
     $('bestLine').textContent = parts2.length ? 'ベスト: ' + parts2.join(' / ') : 'PCはマウスでドラッグ。Esc でポーズ。';
     syncSound();
   }
-  const syncSound = () => { $('btnSound').textContent = '音: ' + (prefs.sound ? 'ON' : 'OFF'); };
+  const syncSound = () => {
+    $('btnSound').textContent = '音: ' + (prefs.sound ? 'ON' : 'OFF');
+    $('btnHaptics').textContent = '振動: ' + (prefs.haptics ? 'ON' : 'OFF');
+    $('btnHaptics').hidden = !Haptics.supported;
+  };
   $('btnNew').addEventListener('click', () => {
     if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = 'セーブを消して開始'; return; }
     audioUnlock(); store.del(SAVE_KEY); newGame(); play();
@@ -831,7 +901,7 @@
   function summit() {
     const first = !summitDone;
     summitDone = true;
-    SFX.win(); buzz(80);
+    SFX.win(); HAPTIC.summit();
     burst(L.flag.x + 4, L.flag.y, 40, ['#ffec27', '#ff004d', '#00e436', '#29adff', '#fff1e8'], 2.2, 0.05, 50);
     if (!first) return;
     if (!best.summit || time < best.summit) { best.summit = time; store.set(BEST_KEY, best); }
@@ -843,7 +913,7 @@
     }, 1200);
   }
   function heaven() {
-    SFX.win(); buzz(120);
+    SFX.win(); HAPTIC.heaven();
     burst(L.gate.x + 4, L.gate.y, 60, ['#ffec27', '#fff1e8', '#ff77a8'], 2.5, 0.02, 70);
     if (!best.heaven || time < best.heaven) { best.heaven = time; store.set(BEST_KEY, best); }
     state = 'clearing';
@@ -863,6 +933,7 @@
   $('btnExplore').addEventListener('click', play);
   $('btnHeavenTitle').addEventListener('click', () => { state = 'title'; refreshTitle(); show('title'); });
   $('btnSound').addEventListener('click', () => { prefs.sound = !prefs.sound; store.set(PREF_KEY, prefs); syncSound(); });
+  $('btnHaptics').addEventListener('click', () => { prefs.haptics = !prefs.haptics; store.set(PREF_KEY, prefs); syncSound(); if (prefs.haptics) HAPTIC.item(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') pause(); });
   window.addEventListener('pagehide', saveGame);
 
