@@ -47,6 +47,10 @@ await drag(200, 400, 140, 400); // shoot left -> slide right onto the item
 await page.waitForTimeout(1200);
 await page.screenshot({ path: out + '5-item.png' });
 if (await page.isVisible('#btnItemOk')) await page.tap('#btnItemOk');
+await start('#at128,521');                                      // under the armor plate: hold at full power to charge
+await drag(200, 520, 200, 300, { hold: 1000, shot: '5b-charging.png' });
+await page.waitForTimeout(500);
+await page.screenshot({ path: out + '5c-plate.png' });
 await start('#row393');                                         // glass hall top: sensor in glass
 await drag(200, 400, 262, 372, { hold: 200, shot: '6-aim-target.png' });
 await start('#row316');
@@ -57,6 +61,10 @@ await start('#at124,239');
 await page.screenshot({ path: out + '9-crown.png' });
 await start('#at16,137');
 await page.screenshot({ path: out + '10-chute.png' });
+await start('#at61,35+AAABKM');                                   // under the core: max-output shot
+await drag(200, 520, 200, 300, { hold: 1000 });
+await page.waitForTimeout(1500);
+await page.screenshot({ path: out + '10b-collapse.png' });
 await start('#at92,7');
 await page.screenshot({ path: out + '11-gate.png' });
 

@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node tools/charge-check.cjs
       - run: node tools/solve.mjs --quiet --no-blast > solve-report.txt || (cat solve-report.txt; exit 1)
       - run: node tools/build.mjs
       - uses: actions/upload-pages-artifact@v3

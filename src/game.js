@@ -118,7 +118,7 @@
   const SPIKE_UP = (x, y) => (y === 5 && (x === 1 || x === 5)) ? '#d8dce2'
     : (y === 6 && x !== 3 && x !== 7) ? '#8a9099' : (y === 7 ? '#3a3e45' : null);
   const CRACK = ['..#.....', '...#..#.', '...##.#.', '.#...#..', '..#..#..', '.##...#.', '#....#..', '.....#..'];
-  const solidish = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z';
+  const solidish = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z' || c === 'V';
   function drawTile(tx, ty) {
     const bx = tx * 8, by = ty * 8;
     tg.clearRect(bx, by, 8, 8);
@@ -176,6 +176,18 @@
         if (x === 7 || y === 7) col = '#22252a';
         if (CRACK[y][x] === '#') col = '#08090b';
         if (y === 2 || y === 5) col = (x % 3 === 1) ? '#8a9099' : '#5b616d';
+        px(x, y, col);
+      }
+    } else if (ch === 'V') { // armor plate: thick grey slab with amber warning stripes and heavy bolts
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const wx = bx + x, wy = by + y;
+        let col = hash(wx, wy) < 0.2 ? '#4a4f57' : '#40444b';
+        if ((wx + wy) % 8 < 2 && (y === 3 || y === 4)) col = '#c98a1c';
+        else if (y === 3 || y === 4) col = '#24272c';
+        if (y === 0 && !same(0, -1)) col = '#8a9099';
+        if (y === 7 && !same(0, 1)) col = '#191b1f';
+        if ((x === 0 && !same(-1, 0)) || (x === 7 && !same(1, 0))) col = '#2e3137';
+        if ((x === 1 || x === 6) && (y === 1 || y === 6)) col = '#9aa0a8';
         px(x, y, col);
       }
     } else if (ch === 'Y' || ch === 'Z') { // the superstructure: a black monolith veined with faint light
@@ -290,6 +302,7 @@
     }
   }
   // shell tiles that vanish are redrawn gradually by the collapse sequence, spreading out from the core
+  let coreStrain = 0; // frames of visible strain after a charged hit that fell short
   let collapseQ = [], collapseT = 0, whiteout = 0, banner = null;
   let collapsing = false, instantRedraw = false;
   L.onChange = (tx, ty) => { const o = origGrid[ty][tx]; if ((o === 'Y' || o === 'Z') && !instantRedraw) collapseQ.push([tx, ty]); else redrawAround(tx, ty); };
@@ -299,7 +312,7 @@
     for (const c of L.crystals) { c.active = true; c.t = 0; }
     for (const r of L.relics) r.got = false;
     for (const it of L.items) it.got = false;
-    L.coreHP = C.CORE_HP; collapsing = false; collapseQ = []; collapseT = 0; whiteout = 0; banner = null;
+    L.coreHP = 1; coreStrain = 0; collapsing = false; collapseQ = []; collapseT = 0; whiteout = 0; banner = null;
   }
 
   // ---------------------------------------------------------------- background
@@ -427,6 +440,8 @@
     relay() { [392, 587, 784].forEach((f, i) => tone({ f, d: 0.16, type: 'triangle', v: 0.09, delay: i * 0.08 })); },
     collapse() { noise(1.8, 0.7, 1800); tone({ f: 55, f2: 20, d: 2.2, type: 'sawtooth', v: 0.22 }); tone({ f: 82, f2: 30, d: 1.8, type: 'triangle', v: 0.2, delay: 0.3 }); },
     blast() { noise(0.35, 0.55, 3800); tone({ f: 70, f2: 30, d: 0.3, type: 'sawtooth', v: 0.16 }); },
+    charged() { [220, 330, 440, 660].forEach((f, i) => tone({ f, d: 0.07, type: 'square', v: 0.05, delay: i * 0.04 })); },
+    overdrive() { noise(0.5, 0.7, 2600); tone({ f: 60, f2: 22, d: 0.5, type: 'sawtooth', v: 0.22 }); tone({ f: 1400, f2: 300, d: 0.25, type: 'square', v: 0.05 }); },
     clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
     door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
     item() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.07, delay: i * 0.07 })); },
@@ -476,6 +491,8 @@
   // Named feel for each moment. [on, off, on, ...] in ms; second value = max iOS ticks.
   const HAPTIC = {
     aimFull: () => Haptics.play(8, 1),
+    charged: () => Haptics.play([12, 40, 12, 40, 30], 3),
+    overdrive: () => Haptics.play([70, 20, 50, 20, 30], 3),
     shot: (pow, magnum) => Haptics.play(Math.round(10 + pow * 16 + (magnum ? 12 : 0)), 1),
     empty: () => Haptics.play([4, 40, 4], 1),
     land: (v) => { if (v > 3.6) Haptics.play(24, 1); else if (v > 2.2) Haptics.play(10, 0); },
@@ -562,8 +579,8 @@
   }
   function loadGame(s) {
     newGame();
-    for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && L.grid[ty][tx] === 'x') Phys.setTile(L, tx, ty, '.');
-    if (s.shellGone) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; } else if (s.coreHP) L.coreHP = s.coreHP;
+    for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && (L.grid[ty][tx] === 'x' || L.grid[ty][tx] === 'V')) Phys.setTile(L, tx, ty, '.');
+    if (s.shellGone) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; } 
     for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
     relicOrder = (s.relicOrder || s.relics || []).filter((i) => L.relics[i]);
@@ -581,7 +598,7 @@
     if (!p || state === 'title') return;
     store.set(SAVE_KEY, {
       safe, time, misses, shots, bestH, summit: summitDone, heaven: heavenDone, abil,
-      cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]), shellGone: L.coreHP <= 0, coreHP: L.coreHP,
+      cracks: L.changes.filter((c) => c[2] === 'x' || c[2] === 'V').map((c) => [c[0], c[1]]), shellGone: L.coreHP <= 0, coreHP: L.coreHP,
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
       relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0), relicOrder,
@@ -675,16 +692,18 @@
     const v = stickVec();
     if (v) { aim = { x: v.dx, y: v.dy }; pow = v.pow; }
     const full = !!v && v.pow >= 0.999;
-    if (full && !stick.full) HAPTIC.aimFull();
+    if (full && !stick.full) { HAPTIC.aimFull(); stick.fullAt = performance.now(); }
+    if (!full) { stick.fullAt = 0; stick.charged = false; }
     stick.full = full;
   });
   function endStick(e, cancel) {
     if (!stick || e.pointerId !== stick.id) return;
     const v = stickVec();
+    const charge = chargeLevel() >= 1;
     stick = null;
     if (!cancel && v && state === 'play') {
-      pendingFire = { dx: v.dx, dy: v.dy, pow: v.pow, ttl: 6 };
-      if (p && !p.dead) { if (p.ammo > 0) HAPTIC.shot(v.pow, abil.magnum); else HAPTIC.empty(); }
+      pendingFire = { dx: v.dx, dy: v.dy, pow: v.pow, charge, ttl: 6 };
+      if (p && !p.dead) { if (charge) HAPTIC.overdrive(); else if (p.ammo > 0) HAPTIC.shot(v.pow, abil.magnum); else HAPTIC.empty(); }
     }
   }
   cv.addEventListener('pointerup', (e) => endStick(e, false));
@@ -696,6 +715,19 @@
       e.preventDefault();
     }
   });
+  // charged shot: held at full power with a full magazine of 2+ rounds for CHARGE_MS
+  function chargeLevel() {
+    if (!stick || !stick.fullAt || !p || p.dead || !Phys.canCharge(p)) return 0;
+    return clamp((performance.now() - stick.fullAt) / C.CHARGE_MS, 0, 1);
+  }
+  function updateCharge() {
+    if (!stick) return;
+    if (stick.full && !Phys.canCharge(p)) stick.fullAt = 0; // the magazine is not full: start over once it is
+    else if (stick.full && !stick.fullAt) stick.fullAt = performance.now();
+    const c = chargeLevel() >= 1;
+    if (c && !stick.charged) { SFX.charged(); HAPTIC.charged(); }
+    stick.charged = c;
+  }
   const aiming = () => state === 'play' && !!stickVec() && !p.dead;
 
   // ---------------------------------------------------------------- update
@@ -720,6 +752,13 @@
       SFX.blast(); later(HAPTIC.blast);
       shake = Math.max(shake, 7);
     }
+    if (e.out >= 2) { // the whole magazine at once
+      burst(flash.x, flash.y, 26, ['#ff3040', '#ffffff', '#ffb347', '#6ff7ff'], 2.8, 0.03, 22);
+      flash.life = 8; flash.big = true;
+      toast('全弾', cx, cy - 12, '#ff3040', 50);
+      SFX.overdrive(); shake = Math.max(shake, 8 + e.out * 2);
+      revealNear(cx, cy, 90, 70);
+    }
     for (const h of e.hits) {
       if (h.t === 'wall') for (let i = 0; i < 6; i++) parts.push({ x: h.x - h.dx * 2, y: h.y - h.dy * 2, vx: -h.dx * rnd(0.3, 1.5) + rnd(-0.8, 0.8), vy: -h.dy * rnd(0.3, 1.5) + rnd(-0.8, 0.8), g: 0.08, life: rnd(8, 16), col: i % 2 ? '#ffec27' : '#fff1e8' });
       else if (h.t === 'ping') { burst(h.x, h.y, 4, ['#fff1e8', '#c2c3c7'], 0.8, 0, 8); SFX.ping(); }
@@ -734,12 +773,17 @@
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
         SFX.clank(); later(HAPTIC.clank);
-        if (h.shell) toast(abil.breaker && abil.magnum ? '殻は硬い。…脈打つ中心を撃て' : '揺らぎもしない。…もっと重い一撃なら', h.x, h.y + 10, '#9aa0a8', 90);
+        if (h.shell && h.core && abil.breaker && abil.magnum) {
+          coreStrain = Math.max(coreStrain, h.out >= 2 ? 240 : 40);
+          toast(h.out >= 2 ? '核が、軋んだ。…まだ、足りない' : '核は、応えない。…持てるすべてを、一度に', h.x, h.y + 10, h.out >= 2 ? '#ff3040' : '#9aa0a8', 110);
+        }
+        else if (h.shell) toast(abil.breaker && abil.magnum ? '殻は硬い。…脈打つ中心を撃て' : '揺らぎもしない。…もっと重い一撃なら', h.x, h.y + 10, '#9aa0a8', 90);
+        else if (h.plate) toast(Phys.maxAmmo(p) < 2 ? '傷ひとつ、つかない。…一発では' : '弾かれた。…一発では、足りない', h.x, h.y + (h.dy < 0 ? 12 : -8), '#9aa0a8', 90);
         else toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : h.heavy ? (abil.breaker ? '崩れない。…もっと強い一撃なら' : 'びくともしない。…まだ') : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
-      } else if (h.t === 'core') {
-        burst(h.x, h.y, 22, ['#ff3040', '#ffffff', '#ffb347'], 2.4, 0.06, 24);
-        toast('核が、軋む。（残り ' + h.hp + '）', h.x, h.y + 12, '#ff3040', 80);
-        SFX.crumble(); SFX.door(); shake = Math.max(shake, 8); later(HAPTIC.crumble);
+      } else if (h.t === 'plate') {
+        for (const [tx, ty] of h.tiles) for (let i = 0; i < 6; i++) parts.push({ x: tx * 8 + rnd(1, 7), y: ty * 8 + rnd(1, 7), vx: rnd(-1.6, 1.6), vy: rnd(-2, 0.4), g: 0.12, life: rnd(30, 70), col: ['#6b7078', '#c98a1c', '#24272c'][i % 3], collide: true });
+        toast('装甲板が、砕けた', h.x, h.y + (h.ty * 8 > p.y ? -8 : 12), '#ffb347', 90);
+        SFX.crumble(); SFX.door(); shake = Math.max(shake, 10); later(HAPTIC.crumble);
       } else if (h.t === 'collapse') {
         startCollapse();
       } else if (h.t === 'target') {
@@ -790,6 +834,7 @@
     }
     const ev = [];
     let fire = null;
+    updateCharge();
     if (pendingFire) { fire = pendingFire; pow = pendingFire.pow; aim = { x: pendingFire.dx, y: pendingFire.dy }; }
     Phys.step(L, p, { fire }, ev);
     let shot = false;
@@ -920,7 +965,8 @@
   function drawPreview() {
     const v = stickVec();
     if (!v || state !== 'play' || p.dead) return;
-    const bullet = Phys.fireBullet(L, p, v.dx, v.dy, true);
+    const charge = chargeLevel() >= 1;
+    const bullet = Phys.fireBullet(L, p, v.dx, v.dy, true, charge ? p.ammo : 1);
     ctx.globalAlpha = 0.6;
     dotted(bullet.segs, 72, '#fff1e8', 3, 9);
     ctx.globalAlpha = 1;
@@ -930,7 +976,7 @@
       let x = null, y = null, col = null;
       if (h.t === 'crystal') { x = h.x; y = h.y; col = '#6ff7ff'; }
       else if (h.t === 'target') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ff77a8'; }
-      else if (h.t === 'break') { x = h.tx * 8 + 4; y = h.ty * 8 + 4; col = '#ffa300'; }
+      else if (h.t === 'break' || h.t === 'plate' || h.t === 'collapse') { x = h.tx != null ? h.tx * 8 + 4 : h.x; y = h.ty != null ? h.ty * 8 + 4 : h.y; col = '#ffa300'; }
       if (x === null) continue;
       ctx.strokeStyle = blink ? col : '#fff1e8'; ctx.lineWidth = 1;
       ctx.strokeRect(Math.round(x) - 5.5, Math.round(y) - 5.5, 11, 11);
@@ -938,7 +984,7 @@
     if (p.ammo <= 0) return;
     // predicted flight after this shot
     const q = Object.assign({}, p);
-    Phys.step(L, q, { fire: { dx: v.dx, dy: v.dy, pow: v.pow } }, null, true);
+    Phys.step(L, q, { fire: { dx: v.dx, dy: v.dy, pow: v.pow, charge } }, null, true);
     for (let f = 1; f < 46; f++) {
       Phys.step(L, q, null, null, true);
       if (q.dead) { ctx.fillStyle = '#ff004d'; ctx.fillRect(Math.round(q.x + 1), Math.round(q.y + 2), 1, 1); ctx.fillRect(Math.round(q.x + 3), Math.round(q.y + 2), 1, 1); ctx.fillRect(Math.round(q.x + 2), Math.round(q.y + 3), 1, 1); ctx.fillRect(Math.round(q.x + 1), Math.round(q.y + 4), 1, 1); ctx.fillRect(Math.round(q.x + 3), Math.round(q.y + 4), 1, 1); break; }
@@ -1091,9 +1137,9 @@
     ctx.fillStyle = mix('#5a0c14', '#ff3040', pulse); ctx.fillRect(x + 4, y + 4, 24, 10);
     ctx.fillStyle = mix('#ff3040', '#ffe0e0', pulse); ctx.fillRect(x + 12, y + 7, 8, 5);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 15, y + 9, 2, 2);
-    const dmg = C.CORE_HP - L.coreHP;
+    if (coreStrain > 0) coreStrain--;
     ctx.fillStyle = '#08090b';
-    for (let i = 0; i < dmg * 3; i++) {
+    for (let i = 0; i < Math.ceil(coreStrain / 16); i++) {
       const hx = hash(i, 7), hy = hash(i, 13);
       ctx.fillRect(x + 4 + Math.floor(hx * 24), y + 4 + Math.floor(hy * 10), 1 + (i % 2), 1);
     }
@@ -1220,6 +1266,14 @@
       const col = v.pow > 0.95 ? '#ff004d' : v.pow > 0.6 ? '#ffa300' : '#ffec27';
       for (let i = 4; i <= l; i += 2) { ctx.fillStyle = col; ctx.fillRect(Math.round(ox + v.dx * i), Math.round(oy + v.dy * i), 2, 2); }
       ctx.fillRect(Math.round(ox + v.dx * l) - 3, Math.round(oy + v.dy * l) - 3, 7, 7);
+    }
+    const ch = chargeLevel();
+    if (ch > 0) { // charge ring: fills while held at full power; blinks with a pip per round once charged
+      const done = ch >= 1, blink = Math.floor(tick / 3) % 2 === 0;
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = done ? (blink ? '#ffffff' : '#ff3040') : '#ff3040'; ctx.lineWidth = done ? 2 : 1;
+      ctx.beginPath(); ctx.arc(ox + 0.5, oy + 0.5, STICK_FULL + 4, -Math.PI / 2, -Math.PI / 2 + ch * 6.283); ctx.stroke();
+      if (done) for (let i = 0; i < p.ammo; i++) { ctx.fillStyle = '#ff3040'; ctx.fillRect(ox - (p.ammo * 4 - 1) / 2 + i * 4 | 0, oy - STICK_FULL - 10, 3, 3); }
     }
     ctx.globalAlpha = 1;
   }

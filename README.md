@@ -12,6 +12,7 @@ npm run solve   # ソルバーで頂上・外まで到達可能か検証（~25�
                 #   --trace x,y 指定タイルの記録片に最初に届いた手順を表示
                 #   --from x,y --abil ammo=1,breaker --open --goal 239 --print y0,y1,x0,x1
                 #               区間テスト：指定地点・能力から指定の行まで届くかだけを数十秒で確認
+node tools/charge-check.cjs      # 装甲板と核が溜め撃ちでだけ壊れることを実際の足場から確認（ソルバーは溜め撃ちを探索しない）
 npm run serve   # dist をローカル配信
 NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表示のスモークテスト
 ```
@@ -22,6 +23,7 @@ NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表
 | `src/physics.js` | 物理・弾の挙動・道具の効果。ゲームとソルバーで共有 |
 | `src/game.js` | 描画・入力・音・セーブ |
 | `tools/solve.mjs` | 到達可能性ソルバー（CI でも実行） |
+| `tools/charge-check.cjs` | 溜め撃ちの検証（CI でも実行） |
 
 調整しやすい数値は `src/physics.js` 冒頭の `C`（重力、反動など）。数値やマップを変えたら `npm run solve` で到達できることを確認する。
 

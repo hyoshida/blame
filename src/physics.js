@@ -21,7 +21,10 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
-    CORE_HP: 5,        // hits (breaker + magnum) to shatter the superstructure's core
+    CHARGE_MS: 750,    // hold the drag at full power this long (with a full magazine of 2+) to charge
+    CHARGE_BOOST: 0.2, // extra recoil per extra round spent in a charged shot
+    PLATE_OUT: 2,      // rounds a charged shot needs to shatter armor plates (V)
+    CORE_OUT: 3,       // ... and the superstructure's core (with breaker + magnum): the whole magazine at max
     WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
     WIND_MAX: 3.4,     // top speed an updraft carries you
     BLAST: 1.45,       // recoil multiplier when the muzzle is pressed against a wall (never explained in-game)
@@ -47,17 +50,19 @@
   //        T target  t target (hit)  h hidden walkway (solid, invisible; bullets pass)  ^v<> spikes
   //        X reinforced crack: only breaker rounds fired with magnum recoil break it
   //        w updraft (air that carries you upward)
-  //        Y superstructure (indestructible shell)   Z its core: breaker + magnum hits wear it down;
-  //          when it breaks, the whole shell (every Y and Z) collapses
-  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1, Y: 1, Z: 1 };
+  //        V armor plate: only a charged shot (the whole magazine at once, 2+ rounds) shatters it (and the plates joined to it)
+  //        Y superstructure (indestructible shell)   Z its core: only a maximum-output shot breaks it
+  //          (charged, 3 rounds, breaker + magnum); then the whole shell (every Y and Z) collapses
+  // Charged shot: hold the drag at full power with a full magazine; release fires every round at once.
+  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1, Y: 1, Z: 1, V: 1 };
   const isSolid = (c) => SOLID[c] === 1;
-  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z';
+  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z' || c === 'V';
 
   function makeLevel(rows) {
     const w = Math.max(...rows.map((r) => r.length));
     const h = rows.length;
     const grid = rows.map((r) => r.padEnd(w, '#').split(''));
-    const L = { w, h, grid, crystals: [], relics: [], items: [], signs: [], targets: [], flag: null, gate: null, start: null, cmap: new Map(), tmap: new Map(), changes: [], onChange: null, coreHP: C.CORE_HP, core: null };
+    const L = { w, h, grid, crystals: [], relics: [], items: [], signs: [], targets: [], flag: null, gate: null, start: null, cmap: new Map(), tmap: new Map(), changes: [], onChange: null, coreHP: 1, core: null };
     const doors = [];
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -132,6 +137,19 @@
     return { x, y, vx: 0, vy: 0, abil: a, ammo: a.ammo + 1, cd: 0, grounded: false, onIce: false, dead: false, won: false, heaven: false };
   }
   const maxAmmo = (p) => p.abil.ammo + 1; // one ground shot + air shots
+  const canCharge = (p) => maxAmmo(p) >= 2 && p.ammo >= maxAmmo(p);
+  // the plate hit and every plate joined to it
+  function plateCluster(L, tx, ty) {
+    const out = [], seen = new Set([ty * L.w + tx]), st = [[tx, ty]];
+    while (st.length && out.length < 200) {
+      const [x, y] = st.pop(); out.push([x, y]);
+      for (const [ax, ay] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const k = ay * L.w + ax;
+        if (!seen.has(k) && tileAt(L, ax, ay) === 'V') { seen.add(k); st.push([ax, ay]); }
+      }
+    }
+    return out;
+  }
 
   function moveX(L, p, d) {
     if (!d) return false;
@@ -181,7 +199,8 @@
   // Hitscan bullet from the player's centre. Passes spikes/clouds (and glass with piercing
   // rounds); bounces off metal; with breaker it breaks cracks; hitting a target opens its
   // doors; passing through a crystal refills ammo. dry = preview: report hits, change nothing.
-  function fireBullet(L, p, dx, dy, dry) {
+  function fireBullet(L, p, dx, dy, dry, out) {
+    out = out || 1;
     let x = p.x + C.PW / 2, y = p.y + 4;
     let tx = Math.floor(x / 8), ty = Math.floor(y / 8);
     const cty = ty;
@@ -217,12 +236,17 @@
           else if (c === 'x') hits.push({ t: 'clank', x, y, dx, dy });
           else if (c === 'X' && p.abil.breaker && p.abil.magnum) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y, heavy: true }); }
           else if (c === 'X') hits.push({ t: 'clank', x, y, dx, dy, heavy: true });
-          else if (c === 'Z' && p.abil.breaker && p.abil.magnum) {
-            const last = L.coreHP <= 1;
-            if (!dry) { L.coreHP--; if (last) collapseShell(L); }
-            hits.push({ t: last ? 'collapse' : 'core', hp: L.coreHP, x, y });
+          else if (c === 'V' && out >= C.PLATE_OUT) {
+            const tiles = plateCluster(L, ntx, nty);
+            if (!dry) for (const [ax, ay] of tiles) setTile(L, ax, ay, '.');
+            hits.push({ t: 'plate', tiles, tx: ntx, ty: nty, x, y });
           }
-          else if (c === 'Z' || c === 'Y') hits.push({ t: 'clank', x, y, dx, dy, heavy: true, shell: true });
+          else if (c === 'V') hits.push({ t: 'clank', x, y, dx, dy, heavy: true, plate: true, out });
+          else if (c === 'Z' && p.abil.breaker && p.abil.magnum && out >= C.CORE_OUT) {
+            if (!dry) collapseShell(L);
+            hits.push({ t: 'collapse', x, y });
+          }
+          else if (c === 'Z' || c === 'Y') hits.push({ t: 'clank', x, y, dx, dy, heavy: true, shell: true, core: c === 'Z', out });
           else if (c === 'T') { const i = L.tmap.get(nty * L.w + ntx); if (!dry) openTarget(L, i); hits.push({ t: 'target', i, tx: ntx, ty: nty, x, y }); }
           else if (c === 'g') hits.push({ t: 'glass', x, y, dx, dy });
           else hits.push({ t: 'wall', x, y, dx, dy });
@@ -254,14 +278,16 @@
 
     if (inp && inp.fire && p.cd <= 0 && p.ammo > 0) {
       const { dx, dy } = inp.fire;
-      p.ammo--;
+      // charged: the whole magazine in one shot (only when it is full and holds 2+ rounds)
+      const out = inp.fire.charge && canCharge(p) ? p.ammo : 1;
+      p.ammo -= out;
       p.cd = C.COOLDOWN;
-      const b = fireBullet(L, p, dx, dy, dry);
-      const k = (p.abil.magnum ? C.RECOIL_MAG : C.RECOIL) * (inp.fire.pow == null ? 1 : inp.fire.pow) * (b.blast ? C.BLAST : 1);
+      const b = fireBullet(L, p, dx, dy, dry, out);
+      const k = (p.abil.magnum ? C.RECOIL_MAG : C.RECOIL) * (inp.fire.pow == null ? 1 : inp.fire.pow) * (b.blast ? C.BLAST : 1) * (1 + C.CHARGE_BOOST * (out - 1));
       p.vx = -dx * k + p.vx * C.KEEP;
       p.vy = -dy * k + p.vy * C.KEEP;
       p.grounded = false;
-      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits, blast: b.blast });
+      if (ev) ev.push({ t: 'shot', dx, dy, segs: b.segs, hits: b.hits, blast: b.blast, out });
     }
 
     if (p.grounded) {
@@ -327,7 +353,7 @@
     for (const c of L.crystals) if (!c.active && --c.t <= 0) c.active = true;
   }
 
-  const API = { collapseShell, C, ITEMS, newAbil, grantItem, makeLevel, tileAt, setTile, openTarget, isSolid, stopsBullet, solidRect, newPlayer, maxAmmo, step, tickWorld, fireBullet, touchingSpikes };
+  const API = { collapseShell, canCharge, plateCluster, C, ITEMS, newAbil, grantItem, makeLevel, tileAt, setTile, openTarget, isSolid, stopsBullet, solidRect, newPlayer, maxAmmo, step, tickWorld, fireBullet, touchingSpikes };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.Phys = API;
 })(typeof window !== 'undefined' ? window : globalThis);

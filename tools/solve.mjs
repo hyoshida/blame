@@ -40,7 +40,10 @@ function applyPhaseWorld() {
     let c = base[y][x];
     if (c === 'x' && abil.breaker) c = '.';
     if (c === 'X' && abil.breaker && abil.magnum) c = '.';
-    if ((c === 'Y' || c === 'Z') && abil.breaker && abil.magnum) c = '.'; // assume the core can be shot out
+    // charged shots are not searched: plates count as open once the magazine holds 2 rounds, the shell once
+    // a 3-round max-output shot with breaker + magnum exists (tools/charge-check.cjs checks both from real spots)
+    if (c === 'V' && abil.ammo >= 1) c = '.';
+    if ((c === 'Y' || c === 'Z') && abil.breaker && abil.magnum && abil.ammo >= 2) c = '.';
     L.grid[y][x] = c;
   }
   for (const i of targetsHit) {

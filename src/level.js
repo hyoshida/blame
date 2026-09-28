@@ -6,12 +6,13 @@
 // Tiles:  # rock   = wet slick floor   g glass (bullets pass with piercing rounds)
 //         x crack (breaker rounds)   X reinforced crack (breaker + magnum together)
 //         m metal (bullets bounce)   h hidden walkway (solid; only seen by the light of a shot)
+//         V armor plate (charged shot: the whole magazine at once)
 //         c girder fragment   d door   T sensor (shoot: opens nearby doors)   ^ v < > shards (touch = miss)
 // Things: o energy cell (refill: touch it OR shoot it)   * record shard (collectible)
 //         A spare magazine (+1 air shot)   B breaker rounds   K piercing rounds   M magnum rounds
 //         1-9 terminal   F summit flag   H outside gate   P start
 //
-// Route (item-only): field and foundry with a single shot -> magazine -> wet decks -> shard chimney ->
+// Route (item-only): field and foundry with a single shot -> magazine -> wet decks -> armor plate over the chimney (charged shot) -> shard chimney ->
 // breaker rounds -> out across the void, up a pillar, back through a cracked wall -> glass hall ->
 // piercing rounds -> glass sensor door -> cell garden -> magazine -> tall shafts -> magnum rounds ->
 // summit wall -> reinforced ceiling (breaker + magnum) -> outside.
@@ -184,7 +185,7 @@
     265: '######...#########',
     266: '######......######',
     267: '######......######',
-    268: '######......######',
+    268: '######VVVVVV######',   // armor plate: shatters only to a charged shot (2 rounds at once)
     // ---- wet decks (two shots)
     272: '......======......',
     276: '..........======..',
@@ -221,7 +222,8 @@
   srect(100, 240, 110, 240, 'c');       // L2
   srect(103, 206, 107, 238, 'w');       // updraft W1
   g(96, 102, 204);                      // L3 at the top of the updraft
-  g(131, 135, 222); sput(133, 221, '*');   // record off to the right
+  g(131, 135, 222); sput(133, 221, '*');   // record off to the right, sealed in armor plates
+  srect(131, 219, 135, 219, 'V'); srect(131, 220, 131, 221, 'V'); srect(135, 220, 135, 221, 'V');
   // O2 debris field (y 150..204), moving left and up
   g(84, 88, 196);
   g(72, 75, 188);
@@ -248,7 +250,7 @@
   sput(48, 40, 'o');
   g(52, 70, 36);                        // a long girder right under the core
   // the superstructure: a shell across the whole sky. Its core pulses in the middle of the underside;
-  // breaker rounds fired with magnum recoil wear it down, and then the whole shell comes apart.
+  // only a maximum-output shot breaks it: charged, all three rounds, breaker + magnum. Then the whole shell comes apart.
   srect(1, 22, 138, 27, 'Y');
   srect(60, 26, 63, 27, 'Z');
   g(70, 76, 16); sput(73, 15, '*');
@@ -296,6 +298,7 @@
   // extra terminals with their own text: [tile x, tile y, text]
   const EXTRA_SIGNS = [
     [78, 293, '――道は、ここで途切れている。\n光の中にしか、道はない。\n…ほかの闇にも、あるのだろう。'],
+    [127, 271, '頭上を、装甲板が塞いでいる。\n一発では、傷もつかない。\n…引き絞ったまま、待て。弾倉のすべてを、一度に。'],
     [102, 239, '塔の中は、ここで塞がれている。\n外を回れ。落ちれば、地の底まで。'],
     [129, 3, '天井の上。…塔は、ここで終わっている。\nその先は、空だ。'],
   ];
@@ -312,7 +315,7 @@
   Object.assign(RECORDS_M, SKY_RECORDS);
   const EXTRA_M = EXTRA_SIGNS.map(([x, y, t]) => [x, y + OY, t]);
   const WAY_M = WAYPOINTS.map(([x, y, n]) => [x, y + OY, n]).concat(SKY_WAYPOINTS);
-  EXTRA_M.push([55, 35, '頭上を塞ぐ、巨大な殻。\n中心だけが、脈打っている。']);
+  EXTRA_M.push([55, 35, '頭上を塞ぐ、巨大な殻。\n中心だけが、脈打っている。\n…装甲板より、ずっと厚い。持てるすべてを。']);
   // record numbering: the order they lie along the route (map rows)
   const RECORD_ORDER = ['53,' + (318 + OY), '42,' + (312 + OY), '8,' + (309 + OY), '120,' + (297 + OY), '108,' + (309 + OY), '76,' + (293 + OY),
     '136,' + (286 + OY), '25,' + (192 + OY), '136,' + (131 + OY), '134,' + (26 + OY), '133,221', '73,15'];
