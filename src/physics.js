@@ -21,6 +21,7 @@
     BOUNCES: 3,        // metal ricochets per bullet
     HIT_R: 6,          // bullet-vs-crystal radius
     MAX_AMMO: 3,
+    CORE_HP: 5,        // hits (breaker + magnum) to shatter the superstructure's core
     WIND: 0.34,        // updraft push per frame (gravity is 0.18, so you rise)
     WIND_MAX: 3.4,     // top speed an updraft carries you
     BLAST: 1.45,       // recoil multiplier when the muzzle is pressed against a wall (never explained in-game)
@@ -46,15 +47,17 @@
   //        T target  t target (hit)  h hidden walkway (solid, invisible; bullets pass)  ^v<> spikes
   //        X reinforced crack: only breaker rounds fired with magnum recoil break it
   //        w updraft (air that carries you upward)
-  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1 };
+  //        Y superstructure (indestructible shell)   Z its core: breaker + magnum hits wear it down;
+  //          when it breaks, the whole shell (every Y and Z) collapses
+  const SOLID = { '#': 1, '=': 1, g: 1, x: 1, X: 1, m: 1, c: 1, d: 1, T: 1, t: 1, h: 1, Y: 1, Z: 1 };
   const isSolid = (c) => SOLID[c] === 1;
-  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't';
+  const stopsBullet = (c) => c === '#' || c === '=' || c === 'x' || c === 'X' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z';
 
   function makeLevel(rows) {
     const w = Math.max(...rows.map((r) => r.length));
     const h = rows.length;
     const grid = rows.map((r) => r.padEnd(w, '#').split(''));
-    const L = { w, h, grid, crystals: [], relics: [], items: [], signs: [], targets: [], flag: null, gate: null, start: null, cmap: new Map(), tmap: new Map(), changes: [], onChange: null };
+    const L = { w, h, grid, crystals: [], relics: [], items: [], signs: [], targets: [], flag: null, gate: null, start: null, cmap: new Map(), tmap: new Map(), changes: [], onChange: null, coreHP: C.CORE_HP, core: null };
     const doors = [];
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -86,7 +89,16 @@
         L.cmap.get(k).push(i);
       }
     });
+    for (let y = 0; y < h && !L.core; y++) for (let x = 0; x < w; x++) if (grid[y][x] === 'Z') { L.core = { x: x * 8 + 8, y: y * 8 + 8 }; break; }
     return L;
+  }
+  // the core gave way: the whole shell goes (tiles removed at once; the game animates it)
+  function collapseShell(L) {
+    const gone = [];
+    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (L.grid[y][x] === 'Y' || L.grid[y][x] === 'Z') gone.push([x, y]);
+    for (const [x, y] of gone) setTile(L, x, y, '.');
+    L.coreHP = 0;
+    return gone;
   }
 
   function tileAt(L, tx, ty) {
@@ -205,6 +217,12 @@
           else if (c === 'x') hits.push({ t: 'clank', x, y, dx, dy });
           else if (c === 'X' && p.abil.breaker && p.abil.magnum) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y, heavy: true }); }
           else if (c === 'X') hits.push({ t: 'clank', x, y, dx, dy, heavy: true });
+          else if (c === 'Z' && p.abil.breaker && p.abil.magnum) {
+            const last = L.coreHP <= 1;
+            if (!dry) { L.coreHP--; if (last) collapseShell(L); }
+            hits.push({ t: last ? 'collapse' : 'core', hp: L.coreHP, x, y });
+          }
+          else if (c === 'Z' || c === 'Y') hits.push({ t: 'clank', x, y, dx, dy, heavy: true, shell: true });
           else if (c === 'T') { const i = L.tmap.get(nty * L.w + ntx); if (!dry) openTarget(L, i); hits.push({ t: 'target', i, tx: ntx, ty: nty, x, y }); }
           else if (c === 'g') hits.push({ t: 'glass', x, y, dx, dy });
           else hits.push({ t: 'wall', x, y, dx, dy });
@@ -309,7 +327,7 @@
     for (const c of L.crystals) if (!c.active && --c.t <= 0) c.active = true;
   }
 
-  const API = { C, ITEMS, newAbil, grantItem, makeLevel, tileAt, setTile, openTarget, isSolid, stopsBullet, solidRect, newPlayer, maxAmmo, step, tickWorld, fireBullet, touchingSpikes };
+  const API = { collapseShell, C, ITEMS, newAbil, grantItem, makeLevel, tileAt, setTile, openTarget, isSolid, stopsBullet, solidRect, newPlayer, maxAmmo, step, tickWorld, fireBullet, touchingSpikes };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.Phys = API;
 })(typeof window !== 'undefined' ? window : globalThis);

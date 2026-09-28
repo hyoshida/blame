@@ -24,7 +24,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
-  const SAVE_KEY = 'recoilclimb.save.v5', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
+  const SAVE_KEY = 'recoilclimb.save.v6', PREF_KEY = 'recoilclimb.prefs.v1', BEST_KEY = 'recoilclimb.best.v2';
   const prefs = Object.assign({ sound: true, haptics: true }, store.get(PREF_KEY, {}));
   let best = store.get(BEST_KEY, {}); // {summit, heaven} in frames
 
@@ -118,7 +118,7 @@
   const SPIKE_UP = (x, y) => (y === 5 && (x === 1 || x === 5)) ? '#d8dce2'
     : (y === 6 && x !== 3 && x !== 7) ? '#8a9099' : (y === 7 ? '#3a3e45' : null);
   const CRACK = ['..#.....', '...#..#.', '...##.#.', '.#...#..', '..#..#..', '.##...#.', '#....#..', '.....#..'];
-  const solidish = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't';
+  const solidish = (c) => c === '#' || c === '=' || c === 'x' || c === 'm' || c === 'd' || c === 'T' || c === 't' || c === 'Y' || c === 'Z';
   function drawTile(tx, ty) {
     const bx = tx * 8, by = ty * 8;
     tg.clearRect(bx, by, 8, 8);
@@ -176,6 +176,16 @@
         if (x === 7 || y === 7) col = '#22252a';
         if (CRACK[y][x] === '#') col = '#08090b';
         if (y === 2 || y === 5) col = (x % 3 === 1) ? '#8a9099' : '#5b616d';
+        px(x, y, col);
+      }
+    } else if (ch === 'Y' || ch === 'Z') { // the superstructure: a black monolith veined with faint light
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+        const wx = bx + x, wy = by + y, h = hash(wx, wy);
+        let col = h < 0.05 ? '#14161c' : '#0b0c10';
+        if ((wx + wy * 3) % 29 === 0 || (wx % 24 === 0 && wy % 2 === 0)) col = '#1f3a44';
+        if (wy % 16 === 0 && wx % 6 !== 0) col = '#16222a';
+        if (!solidish(at(0, 1)) && y === 7) col = '#2c4a55';
+        if (ch === 'Z') col = (x + y) % 3 === 0 ? '#3a0c12' : '#1c0608';
         px(x, y, col);
       }
     } else if (ch === 'm') { // polished steel (bullets bounce)
@@ -279,13 +289,17 @@
       }
     }
   }
-  L.onChange = (tx, ty) => redrawAround(tx, ty);
+  // shell tiles that vanish are redrawn gradually by the collapse sequence, spreading out from the core
+  let collapseQ = [], collapseT = 0, whiteout = 0, banner = null;
+  let collapsing = false, instantRedraw = false;
+  L.onChange = (tx, ty) => { const o = origGrid[ty][tx]; if ((o === 'Y' || o === 'Z') && !instantRedraw) collapseQ.push([tx, ty]); else redrawAround(tx, ty); };
   function resetWorld() {
     while (L.changes.length) { const [tx, ty] = L.changes.pop(); L.grid[ty][tx] = origGrid[ty][tx]; redrawAround(tx, ty); }
     for (const t of L.targets) t.hit = false;
     for (const c of L.crystals) { c.active = true; c.t = 0; }
     for (const r of L.relics) r.got = false;
     for (const it of L.items) it.got = false;
+    L.coreHP = C.CORE_HP; collapsing = false; collapseQ = []; collapseT = 0; whiteout = 0; banner = null;
   }
 
   // ---------------------------------------------------------------- background
@@ -411,6 +425,7 @@
     die() { tone({ f: 520, f2: 90, d: 0.35, type: 'sawtooth', v: 0.08 }); noise(0.2, 0.2, 3000); },
     respawn() { [392, 523].forEach((f, i) => tone({ f, d: 0.08, type: 'triangle', v: 0.08, delay: i * 0.06 })); },
     relay() { [392, 587, 784].forEach((f, i) => tone({ f, d: 0.16, type: 'triangle', v: 0.09, delay: i * 0.08 })); },
+    collapse() { noise(1.8, 0.7, 1800); tone({ f: 55, f2: 20, d: 2.2, type: 'sawtooth', v: 0.22 }); tone({ f: 82, f2: 30, d: 1.8, type: 'triangle', v: 0.2, delay: 0.3 }); },
     blast() { noise(0.35, 0.55, 3800); tone({ f: 70, f2: 30, d: 0.3, type: 'sawtooth', v: 0.16 }); },
     clank() { tone({ f: 180, f2: 150, d: 0.06, type: 'square', v: 0.07 }); tone({ f: 900, d: 0.03, type: 'square', v: 0.04 }); },
     door() { noise(0.35, 0.3, 700); [220, 330, 440].forEach((f, i) => tone({ f, d: 0.12, type: 'square', v: 0.06, delay: 0.1 + i * 0.08 })); },
@@ -469,6 +484,7 @@
     clank: () => Haptics.play(6, 0),
     crumble: () => Haptics.play([35, 25, 20], 2),
     blast: () => Haptics.play([45, 20, 25], 2),
+    collapse: () => Haptics.play([120, 60, 90, 60, 160, 80, 240], 3),
     target: () => Haptics.play([15, 50, 40], 2),
     die: () => Haptics.play([50, 30, 20], 2),
     respawn: () => Haptics.play(8, 1),
@@ -527,6 +543,7 @@
       const row = +m[1];
       L.items.forEach((it) => { if (it.y / 8 > row) { it.got = true; Phys.grantItem(abil, it.type); } });
       L.targets.forEach((t, i) => { if (t.ty > row) Phys.openTarget(L, i); });
+      if (L.core && L.core.y / 8 > row) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; }
       outer: for (let ty = row; ty < L.h; ty++) for (let tx = L.w - 1; tx >= 0; tx--) if (surfaceAt(tx, ty)) { placeAt(tx, ty); break outer; }
     }
     const at = /at(\d+),(\d+)(?:\+([ABKM]+))?/.exec(location.hash); // debug: #at52,165 starts on that tile; +AB grants items
@@ -546,6 +563,7 @@
   function loadGame(s) {
     newGame();
     for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && L.grid[ty][tx] === 'x') Phys.setTile(L, tx, ty, '.');
+    if (s.shellGone) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; } else if (s.coreHP) L.coreHP = s.coreHP;
     for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
     relicOrder = (s.relicOrder || s.relics || []).filter((i) => L.relics[i]);
@@ -563,7 +581,7 @@
     if (!p || state === 'title') return;
     store.set(SAVE_KEY, {
       safe, time, misses, shots, bestH, summit: summitDone, heaven: heavenDone, abil,
-      cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]),
+      cracks: L.changes.filter((c) => c[2] === 'x').map((c) => [c[0], c[1]]), shellGone: L.coreHP <= 0, coreHP: L.coreHP,
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
       relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0), relicOrder,
@@ -583,7 +601,32 @@
     toasts = toasts.filter((t) => t.text !== text); // repeat hits refresh the message instead of stacking it
     toasts.push({ text, x: wx, y: wy, col, life, max: life });
   }
+  function startCollapse() {
+    collapsing = true; collapseT = 0; whiteout = 0.85; shake = 30;
+    banner = { text: '――殻が、崩れる。', life: 220 };
+    SFX.collapse(); later(HAPTIC.collapse);
+    // redraw order: nearest the core first
+    const c = L.core || { x: 0, y: 0 };
+    collapseQ.sort((a, b) => Math.hypot(a[0] * 8 - c.x, a[1] * 8 - c.y) - Math.hypot(b[0] * 8 - c.x, b[1] * 8 - c.y));
+    saveGame();
+  }
+  function updateCollapse() {
+    if (whiteout > 0) whiteout = Math.max(0, whiteout - 0.03);
+    if (banner && --banner.life <= 0) banner = null;
+    if (!collapsing) return;
+    collapseT++;
+    const n = Math.min(collapseQ.length, collapseT < 110 ? (collapseT % 2 === 0 ? 1 : 0) + (collapseT > 50 ? 1 : 0) : 3 + Math.floor((collapseT - 110) / 8));
+    for (let i = 0; i < n; i++) {
+      const [tx, ty] = collapseQ.shift();
+      redrawAround(tx, ty);
+      for (let k = 0; k < 3; k++) parts.push({ x: tx * 8 + rnd(0, 8), y: ty * 8 + rnd(0, 8), vx: rnd(-0.6, 0.6), vy: rnd(-0.4, 0.8), g: 0.1, life: rnd(60, 120), col: k === 0 ? '#2c4a55' : '#14161c' });
+      if (Math.random() < 0.05) burst(tx * 8 + 4, ty * 8 + 4, 8, ['#ffb347', '#ffffff', '#ff3040'], 1.6, 0.03, 20);
+    }
+    if (tick % 10 === 0) { shake = Math.max(shake, 6); SFX.crumble(); }
+    if (!collapseQ.length) { collapsing = false; shake = 12; SFX.win(); }
+  }
   function updateFx() {
+    updateCollapse();
     ghosts = ghosts.filter((g) => --g.life > 0);
     for (const hdn of HIDDEN) if (hdn.t > 0) hdn.t--;
     if (tick % 9 === 0 && EMBERS.length) { // thin smoke curling off the soot
@@ -691,7 +734,14 @@
       } else if (h.t === 'clank' || h.t === 'glass') {
         burst(h.x, h.y, 4, h.t === 'glass' ? ['#c6ecff', '#fff1e8'] : ['#ab5236', '#fff1e8'], 0.8, 0.05, 10);
         SFX.clank(); later(HAPTIC.clank);
-        toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : h.heavy ? (abil.breaker ? '崩れない。…もっと強い一撃なら' : 'びくともしない。…まだ') : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
+        if (h.shell) toast(abil.breaker && abil.magnum ? '殻は硬い。…脈打つ中心を撃て' : '揺らぎもしない。…もっと重い一撃なら', h.x, h.y + 10, '#9aa0a8', 90);
+        else toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : h.heavy ? (abil.breaker ? '崩れない。…もっと強い一撃なら' : 'びくともしない。…まだ') : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
+      } else if (h.t === 'core') {
+        burst(h.x, h.y, 22, ['#ff3040', '#ffffff', '#ffb347'], 2.4, 0.06, 24);
+        toast('核が、軋む。（残り ' + h.hp + '）', h.x, h.y + 12, '#ff3040', 80);
+        SFX.crumble(); SFX.door(); shake = Math.max(shake, 8); later(HAPTIC.crumble);
+      } else if (h.t === 'collapse') {
+        startCollapse();
       } else if (h.t === 'target') {
         const t = L.targets[h.i];
         burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
@@ -1035,7 +1085,21 @@
     }
     ctx.globalAlpha = 1;
   }
+  function drawCore() { // a pulsing core; cracks spread as it takes hits
+    if (!L.core || L.coreHP <= 0) return;
+    const x = L.core.x - 16, y = L.core.y - 8, pulse = (Math.sin(tick * 0.08) + 1) / 2;
+    ctx.fillStyle = mix('#5a0c14', '#ff3040', pulse); ctx.fillRect(x + 4, y + 4, 24, 10);
+    ctx.fillStyle = mix('#ff3040', '#ffe0e0', pulse); ctx.fillRect(x + 12, y + 7, 8, 5);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x + 15, y + 9, 2, 2);
+    const dmg = C.CORE_HP - L.coreHP;
+    ctx.fillStyle = '#08090b';
+    for (let i = 0; i < dmg * 3; i++) {
+      const hx = hash(i, 7), hy = hash(i, 13);
+      ctx.fillRect(x + 4 + Math.floor(hx * 24), y + 4 + Math.floor(hy * 10), 1 + (i % 2), 1);
+    }
+  }
   function drawWorldFX() {
+    drawCore();
     drawWind();
     drawEmbers();
     for (const hdn of HIDDEN) {
@@ -1080,6 +1144,7 @@
     for (const w of WPS) add(w.x + 3, w.y + 2, w.on ? 26 : 10, w.on ? 0.9 : 0.5, w.on ? '#3fd8ff' : '#ff3040');
     for (const e of EMBERS) add(e.x - e.side * 3, e.y, 22, 0.7 + 0.2 * Math.sin(tick * 0.2 + e.seed), '#ff7a2a');
     for (const t of L.targets) if (!t.hit) add(t.tx * 8 + 4, t.ty * 8 + 4, 14, tick % 60 < 40 ? 0.9 : 0.5, '#ff3040');
+    if (L.core && L.coreHP > 0) add(L.core.x, L.core.y + 4, 40 + 10 * Math.sin(tick * 0.08), 0.9, '#ff3040');
     add(L.flag.x + 4, L.flag.y + 3, 22, 0.8, '#ff3040');
     add(L.gate.x + 4, L.gate.y, 70, 1, '#fff4dc');
     return out;
@@ -1205,6 +1270,16 @@
   function renderUI() {
     uctx.clearRect(0, 0, ui.width, ui.height);
     if (state === 'title' || !p) return;
+    if (whiteout > 0) { uctx.globalAlpha = Math.min(1, whiteout * 1.2); uctx.fillStyle = '#fff6e8'; uctx.fillRect(0, 0, ui.width, ui.height); uctx.globalAlpha = 1; }
+    if (banner) {
+      const fs = Math.round(20 * dpr);
+      uctx.font = fs + 'px ' + FONT_UI; uctx.textBaseline = 'middle';
+      uctx.globalAlpha = Math.min(1, banner.life / 40);
+      const w = uctx.measureText(banner.text).width;
+      uctx.fillStyle = '#000'; uctx.fillText(banner.text, (ui.width - w) / 2 + 2 * dpr, ui.height * 0.3 + 2 * dpr);
+      uctx.fillStyle = '#ff3040'; uctx.fillText(banner.text, (ui.width - w) / 2, ui.height * 0.3);
+      uctx.globalAlpha = 1;
+    }
     const k = scale * dpr;
     const toScreen = (wx, wy) => [(wx - Math.round(cam.x)) * k, (wy - Math.round(cam.y)) * k];
     // nearest sign within reach
@@ -1262,6 +1337,10 @@
     saveGame();
     setTimeout(() => { if (state === 'item') show('item'); }, 350);
   }
+  const recordKey = (i) => ((L.relics[i].x - 4) / 8) + ',' + ((L.relics[i].y - 4) / 8);
+  const ORDER = (window.LEVEL.RECORD_ORDER || []).slice();
+  for (let i = 0; i < L.relics.length; i++) if (!ORDER.includes(recordKey(i))) ORDER.push(recordKey(i));
+  const recordNo = (i) => ORDER.indexOf(recordKey(i)) + 1;
   const recordText = (i) => (window.LEVEL.RECORDS || {})[((L.relics[i].x - 4) / 8) + ',' + ((L.relics[i].y - 4) / 8)] || '……';
   function showRecord(i) {
     state = 'item'; stick = null; pendingFire = null;
@@ -1269,7 +1348,7 @@
     g.imageSmoothingEnabled = false; g.clearRect(0, 0, c.width, c.height);
     g.drawImage(FEATHER, 0, 0, 6, 6, 8, 8, 48, 48);
     $('itemSub').textContent = '――記録片が、再生された。';
-    $('itemName').textContent = '記録 ' + String(relicOrder.length).padStart(2, '0') + ' / ' + String(L.relics.length).padStart(2, '0');
+    $('itemName').textContent = '記録 ' + String(recordNo(i)).padStart(2, '0') + ' / ' + String(L.relics.length).padStart(2, '0');
     $('itemDesc').textContent = recordText(i);
     $('itemAbil').textContent = '記録は「静止」から読み返せる。';
     saveGame();
@@ -1278,11 +1357,15 @@
   function showLogs() {
     const list = $('logList');
     list.innerHTML = '';
-    if (!relicOrder.length) { list.innerHTML = '<p class="small">まだ、何も拾っていない。</p>'; }
-    relicOrder.forEach((i, n) => {
-      const d = document.createElement('div'); d.className = 'log';
+    const byKey = new Map(L.relics.map((r, i) => [recordKey(i), i]));
+    const head = document.createElement('p'); head.className = 'small';
+    head.textContent = '回収 ' + relicCount() + ' / ' + L.relics.length;
+    list.appendChild(head);
+    ORDER.forEach((k, n) => {
+      const i = byKey.get(k), got = i != null && L.relics[i].got;
+      const d = document.createElement('div'); d.className = 'log' + (got ? '' : ' missing');
       const h = document.createElement('div'); h.className = 'logno'; h.textContent = '記録 ' + String(n + 1).padStart(2, '0');
-      const t = document.createElement('div'); t.className = 'logtext'; t.textContent = recordText(i);
+      const t = document.createElement('div'); t.className = 'logtext'; t.textContent = got ? recordText(i) : '――未回収';
       d.appendChild(h); d.appendChild(t); list.appendChild(d);
     });
     show('logs');

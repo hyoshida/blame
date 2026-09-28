@@ -40,6 +40,7 @@ function applyPhaseWorld() {
     let c = base[y][x];
     if (c === 'x' && abil.breaker) c = '.';
     if (c === 'X' && abil.breaker && abil.magnum) c = '.';
+    if ((c === 'Y' || c === 'Z') && abil.breaker && abil.magnum) c = '.'; // assume the core can be shot out
     L.grid[y][x] = c;
   }
   for (const i of targetsHit) {

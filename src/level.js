@@ -246,9 +246,12 @@
   // O5 the last light (y 0..55)
   g(34, 39, 48);
   sput(48, 40, 'o');
-  g(55, 59, 36);
-  srect(64, 20, 67, 34, 'w');           // short updraft
-  g(70, 76, 18); sput(73, 17, '*');
+  g(52, 70, 36);                        // a long girder right under the core
+  // the superstructure: a shell across the whole sky. Its core pulses in the middle of the underside;
+  // breaker rounds fired with magnum recoil wear it down, and then the whole shell comes apart.
+  srect(1, 22, 138, 27, 'Y');
+  srect(60, 26, 63, 27, 'Z');
+  g(70, 76, 16); sput(73, 15, '*');
   sput(84, 12, 'o');
   g(90, 97, 8);
   sput(94, 7, 'H');                     // the gate to the outside
@@ -274,9 +277,9 @@
   // sky (outside) records and relays, in map rows
   const SKY_RECORDS = {
     '133,221': '外は、静かだった。\n風だけが、上へ上へと流れていた。',
-    '73,17': 'ここまで来た。\nそれでも、まだ上がある気がした。',
+    '73,15': '殻の向こうに、光があった。\nそれでも、まだ上がある気がした。',
   };
-  const SKY_WAYPOINTS = [[124, 239, '王冠'], [99, 151, '残骸の海'], [16, 137, '風の口'], [20, 61, '風の上'], [92, 7, '外']];
+  const SKY_WAYPOINTS = [[124, 239, '王冠'], [99, 151, '残骸の海'], [16, 137, '風の口'], [20, 61, '風の上'], [57, 35, '殻の下'], [92, 7, '外']];
   // record shard logs, keyed by tile "x,y" (tower-part rows)
   const RECORDS = {
     '53,318': 'この構造体に、上限はない。\n…と、最初の登攀者は書いた。',
@@ -309,7 +312,11 @@
   Object.assign(RECORDS_M, SKY_RECORDS);
   const EXTRA_M = EXTRA_SIGNS.map(([x, y, t]) => [x, y + OY, t]);
   const WAY_M = WAYPOINTS.map(([x, y, n]) => [x, y + OY, n]).concat(SKY_WAYPOINTS);
-  const API = { ROWS, OY, SIGNS, SCORCH: SCORCH_M, RECORDS: RECORDS_M, EXTRA_SIGNS: EXTRA_M, WAYPOINTS: WAY_M };
+  EXTRA_M.push([55, 35, '頭上を塞ぐ、巨大な殻。\n中心だけが、脈打っている。']);
+  // record numbering: the order they lie along the route (map rows)
+  const RECORD_ORDER = ['53,' + (318 + OY), '42,' + (312 + OY), '8,' + (309 + OY), '120,' + (297 + OY), '108,' + (309 + OY), '76,' + (293 + OY),
+    '136,' + (286 + OY), '25,' + (192 + OY), '136,' + (131 + OY), '134,' + (26 + OY), '133,221', '73,15'];
+  const API = { ROWS, OY, SIGNS, SCORCH: SCORCH_M, RECORDS: RECORDS_M, RECORD_ORDER, EXTRA_SIGNS: EXTRA_M, WAYPOINTS: WAY_M };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.LEVEL = API;
 })(typeof window !== 'undefined' ? window : globalThis);
