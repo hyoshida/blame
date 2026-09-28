@@ -209,12 +209,15 @@
     const segs = [], hits = [];
     const STEP = 0.5;
     const seenCrystal = new Set();
+    // a charged shot punches through what it breaks: up to out + 1 blocks (a plate and the plates joined to it count once)
+    let pierceLeft = out >= 2 ? out + 1 : 0;
+    const gone = new Set(); // tiles already broken by this bullet (a dry preview leaves them in place)
     while (dist < C.RANGE) {
       const nx = x + dx * STEP, ny = y + dy * STEP;
       dist += STEP;
       const ntx = Math.floor(nx / 8), nty = Math.floor(ny / 8);
       if (ntx !== tx || nty !== ty) {
-        const c = tileAt(L, ntx, nty);
+        const c = gone.has(nty * L.w + ntx) ? '.' : tileAt(L, ntx, nty);
         if (c === 'm') {
           let fx = ntx !== tx, fy = nty !== ty;
           if (fx && fy) {
@@ -233,14 +236,17 @@
           // wall blast: the shot hits the wall right beside the player (a vertical face, close in)
           if (bounces === 0 && ntx !== tx && dist <= C.BLAST_DIST && c !== 'g' && isSolid(tileAt(L, ntx, cty))) blast = true;
           x = nx; y = ny;
-          if (c === 'x' && p.abil.breaker) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y }); }
+          let broke = false;
+          if (c === 'x' && p.abil.breaker) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y }); broke = true; }
           else if (c === 'x') hits.push({ t: 'clank', x, y, dx, dy });
-          else if (c === 'X' && p.abil.breaker && p.abil.magnum) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y, heavy: true }); }
+          else if (c === 'X' && p.abil.breaker && p.abil.magnum) { if (!dry) setTile(L, ntx, nty, '.'); hits.push({ t: 'break', tx: ntx, ty: nty, x, y, heavy: true }); broke = true; }
           else if (c === 'X') hits.push({ t: 'clank', x, y, dx, dy, heavy: true });
           else if (c === 'V' && out >= C.PLATE_OUT) {
             const tiles = plateCluster(L, ntx, nty);
             if (!dry) for (const [ax, ay] of tiles) setTile(L, ax, ay, '.');
             hits.push({ t: 'plate', tiles, tx: ntx, ty: nty, x, y });
+            for (const [ax, ay] of tiles) gone.add(ay * L.w + ax);
+            broke = true;
           }
           else if (c === 'V') hits.push({ t: 'clank', x, y, dx, dy, heavy: true, plate: true, out });
           else if (c === 'Z' && p.abil.breaker && p.abil.magnum && out >= C.CORE_OUT) {
@@ -251,6 +257,7 @@
           else if (c === 'T') { const i = L.tmap.get(nty * L.w + ntx); if (!dry) openTarget(L, i); hits.push({ t: 'target', i, tx: ntx, ty: nty, x, y }); }
           else if (c === 'g') hits.push({ t: 'glass', x, y, dx, dy });
           else hits.push({ t: 'wall', x, y, dx, dy });
+          if (broke && --pierceLeft > 0) { hits[hits.length - 1].pierce = true; tx = ntx; ty = nty; continue; }
           break;
         }
         tx = ntx; ty = nty;

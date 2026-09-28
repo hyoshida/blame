@@ -621,7 +621,7 @@
   }
   function loadGame(s) {
     newGame();
-    for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && (L.grid[ty][tx] === 'x' || L.grid[ty][tx] === 'V')) Phys.setTile(L, tx, ty, '.');
+    for (const [tx, ty] of s.cracks || []) if (L.grid[ty] && 'xXV'.includes(L.grid[ty][tx])) Phys.setTile(L, tx, ty, '.');
     if (s.shellGone) { instantRedraw = true; Phys.collapseShell(L); instantRedraw = false; } 
     for (const i of s.targets || []) if (L.targets[i]) Phys.openTarget(L, i);
     for (const i of s.relics || []) if (L.relics[i]) L.relics[i].got = true;
@@ -640,7 +640,7 @@
     if (!p || state === 'title') return;
     store.set(SAVE_KEY, {
       safe, time, misses, shots, bestH, summit: summitDone, heaven: heavenDone, abil,
-      cracks: L.changes.filter((c) => c[2] === 'x' || c[2] === 'V').map((c) => [c[0], c[1]]), shellGone: L.coreHP <= 0, coreHP: L.coreHP,
+      cracks: L.changes.filter((c) => c[2] === 'x' || c[2] === 'X' || c[2] === 'V').map((c) => [c[0], c[1]]), shellGone: L.coreHP <= 0, coreHP: L.coreHP,
       targets: L.targets.map((t, i) => (t.hit ? i : -1)).filter((i) => i >= 0),
       items: L.items.map((t, i) => (t.got ? i : -1)).filter((i) => i >= 0),
       relics: L.relics.map((r, i) => (r.got ? i : -1)).filter((i) => i >= 0), relicOrder,
