@@ -94,6 +94,8 @@ await page.click('#dbgList button:has-text("強装弾")');
 await page.waitForTimeout(500);
 await page.screenshot({ path: out + '13-debug-warp.png' });
 if (await page.isVisible('#scrItem')) errors.push('debug warp picked up the item');
+const tmn = await page.evaluate(() => JSON.parse(localStorage.getItem('recoilclimb.telemetry.v1') || '[]').length);
+if (!tmn) errors.push('no telemetry sessions saved'); else console.log('telemetry sessions:', tmn);
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');
 await browser.close();
 process.exit(errors.length ? 1 : 0);

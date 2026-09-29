@@ -16,7 +16,7 @@ let rev = 'dev';
 try { rev = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { /* not a repo */ }
 const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
-const js = ['src/level.js', 'src/physics.js', 'src/game.js'].map((f) => `// ---- ${f}\n` + read(f)).join('\n');
+const js = ['src/level.js', 'src/physics.js', 'src/telemetry.js', 'src/game.js'].map((f) => `// ---- ${f}\n` + read(f)).join('\n');
 const scripts = `<script>window.BUILD=${JSON.stringify(rev + ' ' + stamp)};\n${js.replace(/<\/script/g, '<\\/script')}</script>`;
 
 const head = tpl.match(/<!--HEAD-->([\s\S]*?)<!--\/HEAD-->/)[1].trim();

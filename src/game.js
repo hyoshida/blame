@@ -13,6 +13,7 @@
   for (const [tx, ty, text] of window.LEVEL.EXTRA_SIGNS || []) L.signs.push({ x: tx * 8, y: ty * 8, text });
   const WPS = (window.LEVEL.WAYPOINTS || []).map(([tx, ty, name], i) => ({ i, tx, ty, name, x: tx * 8, y: ty * 8, on: false }));
   const WW = L.w * 8, WH = L.h * 8;
+  const TM = window.Telemetry ? window.Telemetry.create(window.BUILD || '') : null;
   const START_FEET = Math.floor(L.start.y / 8) * 8 + 8;
   const SUMMIT_FEET = L.flag.y + 8;
   const TOP_FEET = L.gate.y + 8;
@@ -576,6 +577,14 @@
   function placeAt(tx, ty) { p = Phys.newPlayer(tx * 8 + 1, ty * 8 + 8 - C.PH - 0.0001, abil); p.grounded = true; }
   const heightOf = (feet) => Math.max(0, Math.round((START_FEET - feet) / 8));
   const heightM = () => heightOf(p.y + C.PH);
+  // telemetry context: game time, height, tile, nearest relay name as a readable place
+  function tmCtx() {
+    const tx = Math.floor((p.x + 3) / 8), ty = Math.floor((p.y + C.PH - 1) / 8);
+    let zone = '', zd = 1e9;
+    for (const w of WPS) { const d = Math.hypot(w.tx - tx, w.ty - ty); if (d < zd) { zd = d; zone = w.name; } }
+    return { t: time, h: heightM(), tx, ty, zone, grounded: p.grounded };
+  }
+  const tm = (fn, ...a) => { if (TM && p) try { TM[fn](...a, tmCtx()); } catch (e) { /* never break the game */ } };
   const clampCamX = (x) => clamp(x, 0, WW - VW);
   const clampCamY = (y) => clamp(y, 0, WH - VH);
   function resetScarf() { scarf = [...Array(11)].map(() => ({ x: p.x + 3, y: p.y + 1, px: p.x + 3, py: p.y + 1 })); }
@@ -665,6 +674,7 @@
     toasts.push({ text, x: wx, y: wy, col, life, max: life });
   }
   function startCollapse() {
+    tm('progress', 'shell');
     collapsing = true; collapseT = 0; whiteout = 0.85; shake = 30;
     banner = { text: '――殻が、崩れる。', life: 220 };
     SFX.collapse(); later(HAPTIC.collapse);
@@ -864,6 +874,7 @@
         else toast(h.t === 'glass' ? '弾が、ガラスに阻まれた' : h.heavy ? (abil.breaker ? '崩れない。…もっと強い一撃なら' : 'びくともしない。…まだ') : 'びくともしない。…まだ', h.x, h.y - 8, '#9aa0a8', 90);
       } else if (h.t === 'plate') {
         for (const [tx, ty] of h.tiles) for (let i = 0; i < 6; i++) parts.push({ x: tx * 8 + rnd(1, 7), y: ty * 8 + rnd(1, 7), vx: rnd(-1.6, 1.6), vy: rnd(-2, 0.4), g: 0.12, life: rnd(30, 70), col: ['#6b7078', '#c98a1c', '#24272c'][i % 3], collide: true });
+        tm('progress', 'plate');
         toast('装甲板が、砕けた', h.x, h.y + (h.ty * 8 > p.y ? -8 : 12), '#ffb347', 90);
         SFX.crumble(); SFX.door(); shake = Math.max(shake, 10); later(HAPTIC.crumble);
       } else if (h.t === 'collapse') {
@@ -873,6 +884,7 @@
         burst(h.x, h.y, 10, ['#ff004d', '#fff1e8'], 1.2, 0, 16);
         for (const [dx, dy] of t.doors) burst(dx * 8 + 4, dy * 8 + 4, 5, ['#ff004d', '#7e2553', '#ff77a8'], 1, 0.08, 24);
         toast('認証', h.x, h.y - 8, '#ff3040', 60);
+        tm('progress', 'sensor');
         const d0 = t.doors[0];
         if (d0) toast('隔壁が、開いた', d0[0] * 8 + 16, d0[1] * 8 - 4, '#ff3040', 90);
         SFX.door(); shake = Math.max(shake, 5); later(HAPTIC.target);
@@ -972,8 +984,10 @@
       else if (e.t === 'land') {
         if (e.v > 2) { burst(p.x + 3, p.y + C.PH, 5, ['#c2c3c7'], 0.7, 0.03, 12); SFX.land(); }
         HAPTIC.land(e.v);
+        tm('land');
       } else if (e.t === 'die') {
         misses++; deadT = 40;
+        tm('miss');
         burst(p.x + 3, p.y + 4, 16, ['#ff004d', '#fff1e8', '#ffec27'], 1.8, 0.04, 20);
         toast('損傷', p.x + 3, p.y - 8, '#ff3040', 50);
         SFX.die(); shake = 6; HAPTIC.die();
@@ -986,11 +1000,13 @@
         relicOrder.push(e.i);
         SFX.relic(); HAPTIC.relic();
         showRecord(e.i);
+        tm('progress', 'record');
       } else if (e.t === 'item') {
         burst(e.x, e.y, 24, ['#ffec27', '#fff1e8', '#ffa300'], 2, 0, 30);
         SFX.item(); HAPTIC.item();
         itemGet(e.type);
-      } else if (e.t === 'flag') summit();
+        tm('progress', 'item ' + e.type);
+      } else if (e.t === 'flag') { if (!summitDone) tm('progress', 'summit'); summit(); }
       // (the heaven gate is handled below on every entry)
     }
     if (pendingFire && !shot) {
@@ -1001,7 +1017,7 @@
     if (!p.dead && isSafeSpot()) { safe.x = p.x; safe.y = p.y; }
     { // outside gate: every time you step into its light
       const g = L.gate, ov = p.x < g.x + 8 && p.x + C.PW > g.x && p.y < g.y + 8 && p.y + C.PH > g.y - 8;
-      if (ov && !inGate && !p.dead) heaven();
+      if (ov && !inGate && !p.dead) { if (!heavenDone) tm('progress', 'outside'); heaven(); }
       inGate = ov;
     }
     for (const w of WPS) { // relay terminals switch on when you pass them
@@ -1010,11 +1026,13 @@
       burst(w.x + 3, w.y + 2, 14, ['#3fd8ff', '#ffffff'], 1.4, 0, 20);
       toast('中継点「' + w.name + '」起動　静止画面から転移できる', w.x + 3, w.y - 10, '#6ff7ff', 150);
       SFX.relay(); HAPTIC.crystal(); saveGame();
+      tm('progress', 'relay ' + w.name);
     }
     if (Math.hypot(p.vx, p.vy) > 3 && tick % 3 === 0) pushGhost(8);
     updateScarf();
     if (p.grounded && Math.abs(p.vx) > 0.6 && tick % 4 === 0) burst(p.x + 3, p.y + C.PH, 1, ['#83769c'], 0.3, 0, 10);
     bestH = Math.max(bestH, heightM());
+    tm('frame');
     if (tick % 90 === 0) saveGame();
     cameraFollow(0.12);
   }
@@ -1641,12 +1659,12 @@
   };
   $('btnNew').addEventListener('click', () => {
     if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = '記録を消して、はじめから'; return; }
-    audioUnlock(); store.del(SAVE_KEY); newGame(); play(); if (!/row|at\d/.test(location.hash)) startIntro();
+    audioUnlock(); store.del(SAVE_KEY); newGame(); play(); tm('begin', 'new'); if (!/row|at\d/.test(location.hash)) startIntro();
   });
   $('btnCont').addEventListener('click', () => {
     const s = store.get(SAVE_KEY, null);
     if (!s) return;
-    audioUnlock(); loadGame(s); play();
+    audioUnlock(); loadGame(s); play(); tm('begin', 'continue');
   });
   function play() { state = 'play'; stick = null; pendingFire = null; show(null); }
   function pause() {
@@ -1656,7 +1674,7 @@
     syncSound(); show('pause');
   }
   const resume = play;
-  function toTitle() { saveGame(); state = 'title'; refreshTitle(); show('title'); }
+  function toTitle() { tm('quit', 'title'); saveGame(); state = 'title'; refreshTitle(); show('title'); }
   function summit() {
     const first = !summitDone;
     summitDone = true;
@@ -1747,6 +1765,7 @@
     return null;
   }
   function dbgWarp(tx, ty, beside) {
+    tm('markDebug');
     const sp = dbgSpot(tx, ty, beside);
     if (sp) [tx, ty] = sp;
     p = Phys.newPlayer(tx * 8 + 1, ty * 8 + 8 - C.PH - 0.0001, abil);
@@ -1760,6 +1779,7 @@
   }
   // item state: the pickups in the world follow what the menu grants (magazines in route order)
   function dbgSetAbil(next) {
+    tm('markDebug');
     Object.assign(abil, next);
     const mags = L.items.filter((it) => it.type === 'A').sort((a, b) => b.y - a.y);
     mags.forEach((it, i) => { it.got = i < abil.ammo; });
@@ -1782,7 +1802,31 @@
     const fl = $('dbgFlags'); fl.innerHTML = '';
     [['breaker', '砕岩弾'], ['pierce', '貫通弾'], ['magnum', '強装弾']].forEach(([k, n]) => fl.appendChild(dbgBtn(n, abil[k], () => dbgSetAbil({ [k]: !abil[k] }))));
     $('dbgShell').disabled = L.coreHP <= 0;
+    renderTm();
   }
+  function renderTm() {
+    if (!TM) { $('dbgTm').textContent = '（無効）'; return; }
+    const c = TM.current(), n = TM.all().length;
+    if (!c) { $('dbgTm').textContent = '保存済み ' + n + ' セッション'; return; }
+    const long = c.stalls.slice().sort((a, b) => b.sec - a.sec)[0];
+    $('dbgTm').textContent = [
+      'このセッション ' + c.sid + (c.debug ? '（デバッグ）' : '') + '　保存済み ' + n,
+      'プレイ ' + fmtTime(c.playSec * 60) + '　最高 ' + c.maxH + 'm',
+      '損傷 ' + c.misses + '回　落下 ' + c.falls + '回（計 ' + c.fallRows + 'マス）',
+      '停滞 ' + c.stalls.length + '回・計 ' + fmtTime(c.stalledSec * 60) + (long ? '　最長 ' + fmtTime(long.sec * 60) + '（' + long.at + '）' : ''),
+    ].join('\n');
+  }
+  const tmJSON = () => JSON.stringify(TM ? TM.all() : [], null, 1);
+  $('dbgTmCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(tmJSON()); $('dbgTm').textContent = 'コピーした'; } catch (e) { $('dbgTm').textContent = 'コピーできなかった。「保存」を使う'; }
+    setTimeout(renderTm, 1200);
+  });
+  $('dbgTmSave').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([tmJSON()], { type: 'application/json' }));
+    a.download = 'recoilclimb-telemetry.json'; document.body.appendChild(a); a.click(); a.remove();
+  });
+  $('dbgTmClear').addEventListener('click', () => { if (TM) TM.clear(); renderTm(); });
   function showDebug() {
     if (state !== 'pause') return;
     const list = $('dbgList'); list.innerHTML = '';
@@ -1819,8 +1863,8 @@
   $('btnHeavenTitle').addEventListener('click', play);
   $('btnSound').addEventListener('click', () => { prefs.sound = !prefs.sound; store.set(PREF_KEY, prefs); syncSound(); });
   $('btnHaptics').addEventListener('click', () => { prefs.haptics = !prefs.haptics; store.set(PREF_KEY, prefs); syncSound(); if (prefs.haptics) HAPTIC.item(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') pause(); });
-  window.addEventListener('pagehide', saveGame);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (state !== 'title') tm('quit', 'hidden'); if (state === 'play') pause(); } });
+  window.addEventListener('pagehide', () => { if (state !== 'title') tm('quit', 'closed'); saveGame(); });
 
   // ---------------------------------------------------------------- layout
   function resize() {
