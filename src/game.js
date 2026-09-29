@@ -458,6 +458,9 @@
     shot(pow) { noise(0.1 + pow * 0.06, 0.25 + pow * 0.2, 1600 + pow * 1400); tone({ f: 120 + pow * 40, f2: 40, d: 0.12, v: 0.13 }); },
     click() { tone({ f: 1200, d: 0.025, v: 0.05 }); },
     land() { tone({ f: 95, f2: 50, d: 0.07, type: 'triangle', v: 0.25 }); },
+    fallWind() { noise(6.5, 0.18, 900); tone({ f: 220, f2: 880, d: 6, type: 'sine', v: 0.03 }); },
+    titleHit() { tone({ f: 55, f2: 30, d: 1.4, type: 'sawtooth', v: 0.12 }); [131, 196, 262].forEach((f, i) => tone({ f, d: 1.6, type: 'triangle', v: 0.06, delay: i * 0.02 })); noise(0.6, 0.2, 2400); },
+    impact() { noise(0.9, 0.8, 1600); tone({ f: 70, f2: 22, d: 0.9, type: 'sine', v: 0.5 }); tone({ f: 140, f2: 40, d: 0.3, type: 'square', v: 0.08 }); },
     crystal() { [660, 990, 1320].forEach((f, i) => tone({ f, d: 0.09, type: 'triangle', v: 0.12, delay: i * 0.05 })); },
     ping() { tone({ f: 2200, f2: 1600, d: 0.08, type: 'triangle', v: 0.08 }); },
     crumble() { noise(0.3, 0.45, 900); tone({ f: 70, f2: 40, d: 0.25, type: 'triangle', v: 0.2 }); },
@@ -534,6 +537,7 @@
     aimFull: () => Haptics.play(8, 1),
     charged: () => Haptics.play([12, 40, 12, 40, 30], 3),
     chargeTick: (k) => Haptics.play(4 + k * 2, 0),
+    impact: () => Haptics.play([90, 30, 40], 2),
     overdrive: (out, max) => Haptics.play(max ? [160, 30, 90, 30, 60, 40, 120] : [50 + out * 15, 20, 30 + out * 10, 20, 30], 3),
     shot: (pow, magnum) => Haptics.play(Math.round(10 + pow * 16 + (magnum ? 12 : 0)), 1),
     empty: () => Haptics.play([4, 40, 4], 1),
@@ -722,6 +726,7 @@
   cv.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     audioUnlock();
+    if (state === 'intro') { skipIntro(); return; }
     if (stick || state !== 'play') return;
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     const pt = toInternal(e);
@@ -892,10 +897,58 @@
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if ('^v<>'.includes(Phys.tileAt(L, tx, ty))) return false;
     return true;
   }
+  // ---------------------------------------------------------------- opening: a fall from the top of the world
+  // (from just under the superstructure down the open column over the field, onto the start ledge)
+  let intro = null;
+  const INTRO_TOP = 30 * 8;
+  function startIntro() {
+    const land = { x: p.x, y: p.y };
+    intro = { t: 0, v: 0.4, land, landed: 0, title: 0 };
+    p.y = INTRO_TOP; p.vx = 0; p.vy = 0; p.grounded = false;
+    aim = { x: 1, y: 0.2 };
+    state = 'intro'; stick = null; pendingFire = null;
+    show(null); $('btnPause').hidden = true;
+    snapIntroCam(); resetScarf(); ghosts = [];
+    SFX.fallWind();
+  }
+  function snapIntroCam() { cam.x = clampCamX(p.x + 3 - VW / 2); cam.y = clampCamY(p.y + 4 - VH * 0.42); cam.px = cam.x; cam.py = cam.y; }
+  function introLand() {
+    p.x = intro.land.x; p.y = intro.land.y; p.vy = 0; p.grounded = true;
+    intro.landed = 1; intro.title = Math.min(intro.title, 30);
+    shake = 16;
+    for (let i = 0; i < 26; i++) parts.push({ x: p.x + 3 + rnd(-2, 2), y: p.y + C.PH, vx: rnd(-2.4, 2.4), vy: rnd(-1.6, -0.2), g: 0.08, life: rnd(20, 44), col: ['#c2c3c7', '#83769c', '#6b7078'][i % 3], collide: true });
+    burst(p.x + 3, p.y + C.PH, 10, ['#ffffff', '#ffb347'], 1.8, 0.02, 12);
+    SFX.impact(); HAPTIC.impact();
+    snapIntroCam();
+  }
+  function introUpdate() {
+    intro.t++;
+    if (!intro.landed) {
+      if (intro.t > 50) intro.v = Math.min(14, intro.v + 0.22);
+      p.y += intro.v;
+      if (intro.t === 60) { intro.title = 1; SFX.titleHit(); }
+      if (intro.v > 4 && tick % 2 === 0) pushGhost(6);
+      if (intro.v > 3) for (let i = 0; i < 2; i++) parts.push({ x: cam.x + rnd(0, VW), y: cam.y + VH + 4, vx: 0, vy: -intro.v * rnd(1.1, 1.6), g: 0, life: 30, col: Math.random() < 0.3 ? '#8ff8ff' : '#6b7078', streak: true });
+      if (p.y >= intro.land.y) introLand();
+      snapIntroCam();
+    } else if (++intro.landed > 70) {
+      intro = null; state = 'play'; $('btnPause').hidden = false;
+      safe = { x: p.x, y: p.y }; saveGame();
+      return;
+    }
+    if (intro.title) intro.title++;
+    updateScarf();
+  }
+  function skipIntro() {
+    if (!intro) return;
+    if (!intro.landed) introLand();
+    else intro.landed = 71;
+  }
   function update() {
     tick++;
     if (tick % 30 === 0) ambientLevel();
     if (state === 'pause' || state === 'title') { cameraFollow(0.05); return; }
+    if (state === 'intro') { updateFx(); Phys.tickWorld(L); if (intro) introUpdate(); return; }
     updateFx();
     Phys.tickWorld(L);
     if (state !== 'play') { cameraFollow(0.05); return; }
@@ -1209,7 +1262,7 @@
       ctx.fillStyle = '#fff1e8'; ctx.fillRect(x + 3, y - 3 + Math.round(glow * 2), 2, 2);
     }
     if (p) drawPlayer();
-    for (const q of parts) { ctx.fillStyle = q.col; ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); }
+    for (const q of parts) { ctx.fillStyle = q.col; ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, q.streak ? Math.max(2, Math.round(-q.vy * 0.8)) : 1); }
   }
   // drawn after the darkness: things that are themselves light
   function drawEmbers() {
@@ -1446,6 +1499,32 @@
     uctx.clearRect(0, 0, ui.width, ui.height);
     if (state === 'title' || !p) return;
     if (whiteout > 0) { uctx.globalAlpha = Math.min(1, whiteout * 1.2); uctx.fillStyle = '#fff6e8'; uctx.fillRect(0, 0, ui.width, ui.height); uctx.globalAlpha = 1; }
+    if (intro) { // letterbox + title call
+      const bar = Math.round(ui.height * 0.07 * (intro.landed ? Math.max(0, 1 - intro.landed / 40) : Math.min(1, intro.t / 30)));
+      uctx.fillStyle = '#000'; uctx.fillRect(0, 0, ui.width, bar); uctx.fillRect(0, ui.height - bar, ui.width, bar);
+      if (intro.title) {
+        const t = intro.title, a = t < 30 ? t / 30 : t > 200 ? Math.max(0, 1 - (t - 200) / 40) : 1;
+        if (a > 0) {
+          const fs = Math.round(42 * dpr), cy = ui.height * 0.36;
+          uctx.font = fs + 'px ' + FONT_UI; uctx.textBaseline = 'middle';
+          const lines = ['RECOIL', 'CLIMB'];
+          const jit = t < 40 && t % 6 < 2 ? 3 * dpr : 0;
+          lines.forEach((l, i) => {
+            const w = uctx.measureText(l).width, x = (ui.width - w) / 2, y = cy + (i - 0.5) * fs * 1.05;
+            uctx.globalAlpha = a * 0.85; uctx.fillStyle = '#ff3040'; uctx.fillText(l, x - 2 * dpr - jit, y);
+            uctx.globalAlpha = a * 0.7; uctx.fillStyle = '#3fd8ff'; uctx.fillText(l, x + 2 * dpr + jit, y);
+            uctx.globalAlpha = a; uctx.fillStyle = '#e3e6e9'; uctx.fillText(l, x, y);
+          });
+          const sub = '果ては、あるのか。', ss = Math.round(14 * dpr);
+          uctx.font = ss + 'px ' + FONT_UI;
+          uctx.globalAlpha = a * Math.min(1, Math.max(0, (t - 30) / 30)); uctx.fillStyle = '#9aa0a8';
+          uctx.fillText(sub, (ui.width - uctx.measureText(sub).width) / 2, cy + fs * 1.3);
+          uctx.globalAlpha = 1;
+        }
+      }
+      if (!intro.landed && intro.t > 90) { const ss = Math.round(11 * dpr); uctx.font = ss + 'px ' + FONT_UI; uctx.globalAlpha = 0.5; uctx.fillStyle = '#7a808a'; const tx = 'タップで飛ばす'; uctx.fillText(tx, ui.width - uctx.measureText(tx).width - 10 * dpr, ui.height - bar - 12 * dpr); uctx.globalAlpha = 1; }
+      return;
+    }
     if (banner) {
       const fs = Math.round(20 * dpr);
       uctx.font = fs + 'px ' + FONT_UI; uctx.textBaseline = 'middle';
@@ -1567,7 +1646,7 @@
   };
   $('btnNew').addEventListener('click', () => {
     if (store.get(SAVE_KEY, null) && !newArmed) { newArmed = true; $('btnNew').textContent = '記録を消して、はじめから'; return; }
-    audioUnlock(); store.del(SAVE_KEY); newGame(); play();
+    audioUnlock(); store.del(SAVE_KEY); newGame(); play(); if (!/row|at\d/.test(location.hash)) startIntro();
   });
   $('btnCont').addEventListener('click', () => {
     const s = store.get(SAVE_KEY, null);

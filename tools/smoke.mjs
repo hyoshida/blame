@@ -37,7 +37,14 @@ async function start(hash = '') {
 await page.goto(url);
 await page.waitForTimeout(600);
 await page.screenshot({ path: out + '1-title.png' });
-await start();
+await start();                                                   // opening: the fall from the top, with the title call
+await page.waitForTimeout(1600);
+await page.screenshot({ path: out + '1b-intro-title.png' });
+await page.waitForTimeout(2600);
+await page.screenshot({ path: out + '1c-intro-fall.png' });
+await page.waitForTimeout(4000);
+await page.screenshot({ path: out + '1d-intro-landed.png' });
+await page.waitForTimeout(1500);
 await page.screenshot({ path: out + '2-start-sign.png' });
 await drag(200, 500, 110, 540, { hold: 200, shot: '3-aiming.png' }); // shoot down-left -> fly right
 await page.waitForTimeout(900);
