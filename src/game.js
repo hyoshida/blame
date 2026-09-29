@@ -1514,10 +1514,6 @@
             uctx.globalAlpha = a * 0.7; uctx.fillStyle = '#3fd8ff'; uctx.fillText(l, x + 2 * dpr + jit, y);
             uctx.globalAlpha = a; uctx.fillStyle = '#e3e6e9'; uctx.fillText(l, x, y);
           });
-          const sub = '果ては、あるのか。', ss = Math.round(14 * dpr);
-          uctx.font = ss + 'px ' + FONT_UI;
-          uctx.globalAlpha = a * Math.min(1, Math.max(0, (t - 30) / 30)); uctx.fillStyle = '#9aa0a8';
-          uctx.fillText(sub, (ui.width - uctx.measureText(sub).width) / 2, cy + fs * 1.3);
           uctx.globalAlpha = 1;
         }
       }
@@ -1635,7 +1631,7 @@
     const parts2 = [];
     if (best.summit) parts2.push('最上層 ' + fmtTime(best.summit));
     if (best.heaven) parts2.push('外 ' + fmtTime(best.heaven));
-    $('bestLine').textContent = parts2.length ? '最短記録　' + parts2.join('　') : 'PC：マウスで引いて放す　Esc：静止';
+    $('bestLine').textContent = parts2.length ? '最短記録　' + parts2.join('　') : '';
     syncSound();
   }
   const syncSound = () => {
