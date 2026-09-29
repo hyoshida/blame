@@ -17,13 +17,18 @@ try { rev = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', '
 const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 const js = ['src/level.js', 'src/physics.js', 'src/telemetry.js', 'src/game.js'].map((f) => `// ---- ${f}\n` + read(f)).join('\n');
-const scripts = `<script>window.BUILD=${JSON.stringify(rev + ' ' + stamp)};\n${js.replace(/<\/script/g, '<\\/script')}</script>`;
+// TELEMETRY_URL (env; in CI the repository variable of the same name): where the Pages build sends play
+// telemetry (a Google Apps Script web app, see tools/telemetry/). The artifact build keeps it in its own db instead.
+const TELEMETRY_URL = process.env.TELEMETRY_URL || '';
+const scriptsFor = (url) => `<script>window.BUILD=${JSON.stringify(rev + ' ' + stamp)};window.TELEMETRY_URL=${JSON.stringify(url)};\n${js.replace(/<\/script/g, '<\\/script')}</script>`;
+const scripts = scriptsFor(TELEMETRY_URL);
 
 const head = tpl.match(/<!--HEAD-->([\s\S]*?)<!--\/HEAD-->/)[1].trim();
-const body = tpl.replace(/<!--HEAD-->[\s\S]*?<!--\/HEAD-->/, '').replace('<!--SCRIPTS-->', scripts).trim();
+const bodyFor = (sc) => tpl.replace(/<!--HEAD-->[\s\S]*?<!--\/HEAD-->/, '').replace('<!--SCRIPTS-->', () => sc).trim();
+const body = bodyFor(scripts);
 
 mkdirSync(new URL('../dist/', import.meta.url), { recursive: true });
-writeFileSync(new URL('../dist/artifact.html', import.meta.url), head + '\n' + body + '\n');
+writeFileSync(new URL('../dist/artifact.html', import.meta.url), head + '\n' + bodyFor(scriptsFor('')) + '\n');
 writeFileSync(new URL('../dist/index.html', import.meta.url), `<!doctype html>
 <html lang="ja">
 <head>
@@ -37,4 +42,4 @@ ${body}
 </body>
 </html>
 `);
-console.log(`built dist/index.html + dist/artifact.html (${rev} ${stamp}, ${(scripts.length / 1024).toFixed(1)} KB js)`);
+console.log(`built dist/index.html + dist/artifact.html (${rev} ${stamp}, ${(scripts.length / 1024).toFixed(1)} KB js${TELEMETRY_URL ? ', telemetry → ' + new URL(TELEMETRY_URL).host : ''})`);

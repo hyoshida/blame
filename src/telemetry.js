@@ -1,6 +1,7 @@
 // Play telemetry: where a run stopped, how often the player fell or missed, and how long progress stalled.
 // Kept per session (one run from the title screen) in localStorage and, when the page runs as a claude.ai
-// artifact with the db capability, mirrored to the shared collection `telemetry/<session id>`.
+// artifact with the db capability, mirrored to the shared collection `telemetry/<session id>`; on static hosting
+// with window.TELEMETRY_URL set (a Google Apps Script web app), POSTed there as JSON (one row per session).
 // Nothing personal is recorded: a random session id, game-time seconds and tile positions only.
 (function (root) {
   'use strict';
@@ -22,7 +23,20 @@
     if (root.claude && typeof root.claude.use === 'function') {
       root.claude.use('db').then((d) => { db = d; if (db && s) flush(true); }).catch(() => { db = null; });
     }
-    async function writeRemote() {
+    // ---- optional remote sink (static hosting): POST to a Google Apps Script web app (window.TELEMETRY_URL)
+    const ENDPOINT = root.TELEMETRY_URL || '';
+    function post(beacon) {
+      if (!ENDPOINT || !s) return;
+      const body = JSON.stringify(s);
+      try {
+        // text/plain + no-cors: a "simple" request, so no CORS preflight (Apps Script can't answer one)
+        if (beacon && navigator.sendBeacon) navigator.sendBeacon(ENDPOINT, new Blob([body], { type: 'text/plain' }));
+        else fetch(ENDPOINT, { method: 'POST', mode: 'no-cors', keepalive: body.length < 60000, headers: { 'Content-Type': 'text/plain' }, body }).catch(() => {});
+      } catch (e) { /* offline */ }
+      lastWrite = Date.now();
+    }
+    async function writeRemote(beacon) {
+      if (ENDPOINT) { post(beacon); return; }
       if (!db || !s) return;
       if (writing) { pending = true; return; }
       writing = true;
@@ -31,14 +45,15 @@
       writing = false;
       if (pending) { pending = false; writeRemote(); }
     }
-    function flush(force) {
+    function flush(force, beacon) {
       if (!s || (!dirty && !force)) return;
       dirty = false;
       s.updatedAt = new Date().toISOString();
       const all = load().filter((x) => x.sid !== s.sid);
       all.push(s); save(all);
-      if (force || Date.now() - lastWrite > 20000) writeRemote();
-      else if (!timer) timer = setTimeout(() => { timer = null; writeRemote(); }, 20000 - (Date.now() - lastWrite)); // at most one remote write per 20s
+      const gap = ENDPOINT ? 60000 : 20000; // between unforced remote writes
+      if (force || Date.now() - lastWrite > gap) writeRemote(beacon);
+      else if (!timer) timer = setTimeout(() => { timer = null; writeRemote(); }, gap - (Date.now() - lastWrite));
     }
     const touch = () => { dirty = true; };
 
@@ -70,12 +85,12 @@
       land(ctx) {
         if (!s || groundY == null) return;
         const rows = ctx.ty - groundY;
-        if (rows >= FALL_ROWS) { s.falls++; s.fallRows += rows; push(s.fallSpots, [ctx.tx, ctx.ty, rows, Math.round((ctx.t - s.t0) / 60)]); touch(); }
+        if (rows >= FALL_ROWS) { s.falls++; s.fallRows += rows; push(s.fallSpots, [ctx.tx, ctx.ty, rows, Math.round((ctx.t - s.t0) / 60), ctx.zone]); touch(); }
         groundY = ctx.ty;
       },
       miss(ctx) {
         if (!s) return;
-        s.misses++; push(s.missSpots, [ctx.tx, ctx.ty, Math.round((ctx.t - s.t0) / 60)]); touch();
+        s.misses++; push(s.missSpots, [ctx.tx, ctx.ty, Math.round((ctx.t - s.t0) / 60), ctx.zone]); touch();
         groundY = null; // respawn is not a fall
       },
       // something moved the run forward; the gap since the last one may have been a stall
@@ -96,7 +111,7 @@
       quit(reason, ctx) {
         if (!s) return;
         s.quit = { reason, at: ctx.zone, tx: ctx.tx, ty: ctx.ty, h: ctx.h, t: Math.round((ctx.t - s.t0) / 60), sinceProgressSec: Math.round((ctx.t - lastProgress) / 60) };
-        touch(); flush(true);
+        touch(); flush(true, reason === 'closed' || reason === 'hidden');
       },
       current: () => s,
       all: load,

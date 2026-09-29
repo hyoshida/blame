@@ -45,7 +45,27 @@ NODE_PATH=$(npm root -g) node tools/smoke.mjs   # ヘッドレスでスマホ表
 - `milestones`: 進捗の時系列。時間はすべてゲーム内のプレイ秒（静止中は数えない）
 - `debug`: デバッグ URL やデバッグメニューを使った回（集計から除く）
 
-保存先は端末の localStorage（直近 30 セッション、デバッグメニューからコピー・保存・消去）。claude.ai の Artifact 版では、共有 DB の `telemetry/<セッションID>` にも書き込む（書けるのは Contributor 以上として共有された人）。個人を特定する情報は記録しない。
+保存先は端末の localStorage（直近 30 セッション、デバッグメニューからコピー・保存・消去）に加えて:
+
+- GitHub Pages 版: `TELEMETRY_URL` に設定した Google Apps Script の Web アプリへ送る（1 セッション 1 行、Google スプレッドシートに溜まる）。開始・やめた時は即時、プレイ中は最短 60 秒おき
+- claude.ai の Artifact 版: 共有 DB の `telemetry/<セッションID>`（書けるのは Contributor 以上として共有された人）
+
+個人を特定する情報は記録しない（ランダムなセッション ID・プレイ秒・タイル座標のみ）。
+
+#### GitHub Pages 版の送信先（Google スプレッドシート、無料）
+
+1. Google スプレッドシートを新規作成し、「拡張機能 → Apps Script」を開く
+2. `tools/telemetry/Code.gs` の中身を貼り付けて保存
+3. 「プロジェクトの設定 → スクリプト プロパティ」に `READ_KEY`（集計スクリプト用の合言葉、任意の長い文字列）を追加
+4. 「デプロイ → 新しいデプロイ → 種類: ウェブアプリ」、実行ユーザー「自分」、アクセス「全員」でデプロイし、表示された URL（`https://script.google.com/macros/s/…/exec`）を控える
+5. GitHub のリポジトリ設定「Settings → Secrets and variables → Actions → Variables」に `TELEMETRY_URL` としてその URL を登録し、Actions を再実行（または push）
+
+集計:
+
+- スプレッドシートのメニュー「RECOIL CLIMB → 集計を更新」で `summary` シートに場所別（最寄りの中継点）の やめた数・落下・損傷・停滞時間 を出す。定期更新したい場合は Apps Script の「トリガー」で `summarize` を時間主導で登録
+- 手元で: `node tools/telemetry-report.mjs "https://script.google.com/macros/s/…/exec?key=READ_KEY"`（デバッグメニューから保存した JSON ファイルも渡せる。`--all` でデバッグ回も含める）
+
+Code.gs を更新したら「デプロイを管理 → 編集 → 新バージョン」で同じ URL のまま差し替える。
 
 ## デプロイ
 
