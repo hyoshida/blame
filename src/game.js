@@ -914,11 +914,11 @@
   function snapIntroCam() { cam.x = clampCamX(p.x + 3 - VW / 2); cam.y = clampCamY(p.y + 4 - VH * 0.42); cam.px = cam.x; cam.py = cam.y; }
   function introLand() {
     p.x = intro.land.x; p.y = intro.land.y; p.vy = 0; p.grounded = true;
-    intro.landed = 1; intro.title = Math.min(intro.title, 30);
+    intro.landed = 1; intro.title = 1; // the title call comes once she is down
     shake = 16;
     for (let i = 0; i < 26; i++) parts.push({ x: p.x + 3 + rnd(-2, 2), y: p.y + C.PH, vx: rnd(-2.4, 2.4), vy: rnd(-1.6, -0.2), g: 0.08, life: rnd(20, 44), col: ['#c2c3c7', '#83769c', '#6b7078'][i % 3], collide: true });
     burst(p.x + 3, p.y + C.PH, 10, ['#ffffff', '#ffb347'], 1.8, 0.02, 12);
-    SFX.impact(); HAPTIC.impact();
+    SFX.impact(); HAPTIC.impact(); setTimeout(() => SFX.titleHit(), 350);
     snapIntroCam();
   }
   function introUpdate() {
@@ -926,12 +926,11 @@
     if (!intro.landed) {
       if (intro.t > 50) intro.v = Math.min(14, intro.v + 0.22);
       p.y += intro.v;
-      if (intro.t === 60) { intro.title = 1; SFX.titleHit(); }
       if (intro.v > 4 && tick % 2 === 0) pushGhost(6);
       if (intro.v > 3) for (let i = 0; i < 2; i++) parts.push({ x: cam.x + rnd(0, VW), y: cam.y + VH + 4, vx: 0, vy: -intro.v * rnd(1.1, 1.6), g: 0, life: 30, col: Math.random() < 0.3 ? '#8ff8ff' : '#6b7078', streak: true });
       if (p.y >= intro.land.y) introLand();
       snapIntroCam();
-    } else if (++intro.landed > 70) {
+    } else if (++intro.landed > 200) {
       intro = null; state = 'play'; $('btnPause').hidden = false;
       safe = { x: p.x, y: p.y }; saveGame();
       return;
@@ -942,7 +941,7 @@
   function skipIntro() {
     if (!intro) return;
     if (!intro.landed) introLand();
-    else intro.landed = 71;
+    else intro.landed = 201;
   }
   function update() {
     tick++;
@@ -1500,10 +1499,10 @@
     if (state === 'title' || !p) return;
     if (whiteout > 0) { uctx.globalAlpha = Math.min(1, whiteout * 1.2); uctx.fillStyle = '#fff6e8'; uctx.fillRect(0, 0, ui.width, ui.height); uctx.globalAlpha = 1; }
     if (intro) { // letterbox + title call
-      const bar = Math.round(ui.height * 0.07 * (intro.landed ? Math.max(0, 1 - intro.landed / 40) : Math.min(1, intro.t / 30)));
+      const bar = Math.round(ui.height * 0.07 * (intro.landed ? clamp(1 - (intro.landed - 160) / 40, 0, 1) : Math.min(1, intro.t / 30)));
       uctx.fillStyle = '#000'; uctx.fillRect(0, 0, ui.width, bar); uctx.fillRect(0, ui.height - bar, ui.width, bar);
       if (intro.title) {
-        const t = intro.title, a = t < 30 ? t / 30 : t > 200 ? Math.max(0, 1 - (t - 200) / 40) : 1;
+        const t = intro.title, a = t < 30 ? t / 30 : t > 160 ? Math.max(0, 1 - (t - 160) / 40) : 1;
         if (a > 0) {
           const fs = Math.round(42 * dpr), cy = ui.height * 0.36;
           uctx.font = fs + 'px ' + FONT_UI; uctx.textBaseline = 'middle';
@@ -1522,7 +1521,7 @@
           uctx.globalAlpha = 1;
         }
       }
-      if (!intro.landed && intro.t > 90) { const ss = Math.round(11 * dpr); uctx.font = ss + 'px ' + FONT_UI; uctx.globalAlpha = 0.5; uctx.fillStyle = '#7a808a'; const tx = 'タップで飛ばす'; uctx.fillText(tx, ui.width - uctx.measureText(tx).width - 10 * dpr, ui.height - bar - 12 * dpr); uctx.globalAlpha = 1; }
+      if (intro.t > 90 && intro.landed < 150) { const ss = Math.round(11 * dpr); uctx.font = ss + 'px ' + FONT_UI; uctx.globalAlpha = 0.5; uctx.fillStyle = '#7a808a'; const tx = 'タップで飛ばす'; uctx.fillText(tx, ui.width - uctx.measureText(tx).width - 10 * dpr, ui.height - bar - 12 * dpr); uctx.globalAlpha = 1; }
       return;
     }
     if (banner) {

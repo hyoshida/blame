@@ -42,9 +42,9 @@ await page.waitForTimeout(1600);
 await page.screenshot({ path: out + '1b-intro-title.png' });
 await page.waitForTimeout(2600);
 await page.screenshot({ path: out + '1c-intro-fall.png' });
-await page.waitForTimeout(4000);
+await page.waitForTimeout(4200);
 await page.screenshot({ path: out + '1d-intro-landed.png' });
-await page.waitForTimeout(1500);
+await page.waitForTimeout(3500);
 await page.screenshot({ path: out + '2-start-sign.png' });
 await drag(200, 500, 110, 540, { hold: 200, shot: '3-aiming.png' }); // shoot down-left -> fly right
 await page.waitForTimeout(900);
