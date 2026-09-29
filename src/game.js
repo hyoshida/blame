@@ -1821,7 +1821,9 @@
     try { await navigator.clipboard.writeText(tmJSON()); $('dbgTm').textContent = 'コピーした'; } catch (e) { $('dbgTm').textContent = 'コピーできなかった。「保存」を使う'; }
     setTimeout(renderTm, 1200);
   });
-  $('dbgTmSave').addEventListener('click', () => {
+  $('dbgTmSave').addEventListener('click', async () => {
+    const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+    if (dl) { try { await dl.save({ filename: 'recoilclimb-telemetry.json', data: tmJSON() }); } catch (e) { /* declined */ } return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([tmJSON()], { type: 'application/json' }));
     a.download = 'recoilclimb-telemetry.json'; document.body.appendChild(a); a.click(); a.remove();
