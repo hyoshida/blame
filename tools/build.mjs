@@ -42,4 +42,6 @@ ${body}
 </body>
 </html>
 `);
+// a standalone page for trying iPhone haptics methods on a real device (served next to the game on Pages)
+writeFileSync(new URL('../dist/haptics-lab.html', import.meta.url), read('src/haptics-lab.html'));
 console.log(`built dist/index.html + dist/artifact.html (${rev} ${stamp}, ${(scripts.length / 1024).toFixed(1)} KB js${TELEMETRY_URL ? ', telemetry → ' + new URL(TELEMETRY_URL).host : ''})`);

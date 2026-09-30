@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Haptics Lab</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #07080b; color: #e3e6e9; font: 15px/1.5 -apple-system, 'Hiragino Sans', sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  main { max-width: 480px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 4px 0 12px; color: #9aa0a8; font-size: 13px; }
+  .pad { position: relative; height: 150px; margin: 0 0 6px; border: 1px solid #3a3f47; border-radius: 6px; background: #12151b; touch-action: none; overflow: hidden; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 12px; }
+  .pad b { display: block; font-size: 16px; color: #fff; }
+  .pad span { font-size: 12px; color: #9aa0a8; }
+  .row { display: flex; justify-content: space-between; font-size: 12px; color: #7a808a; margin-bottom: 18px; }
+  .hit { color: #6ff7ff; }
+  .hidden-switch { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  /* F: a native switch blown up to cover the whole pad, almost invisible */
+  .bigswitch { position: absolute; left: 50%; top: 50%; width: 51px; height: 31px; margin: -15px 0 0 -25px; transform: scale(9); opacity: 0.02; }
+  label.cover { position: absolute; inset: 0; display: block; }
+  .ua { font-size: 11px; color: #5b616d; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Haptics Lab</h1>
+  <p>iPhone の Safari で、どの方式なら振動するかを確かめるページです。各枠で書かれた操作をして、振動したかどうかを教えてください。数字はイベントが届いた回数です（振動の有無は画面からは分かりません）。</p>
+
+  <!-- hidden switch driven by script -->
+  <label id="hiddenLabel" class="hidden-switch" aria-hidden="true"><input id="hiddenInput" type="checkbox" switch></label>
+
+  <div class="pad" id="padA"><div><b>A. 引っ張って離す（pointerup → label.click）</b><span>いまのゲームの方式</span></div></div>
+  <div class="row"><span>離した回数 <span class="hit" id="cA">0</span></span></div>
+
+  <div class="pad" id="padB"><div><b>B. 引っ張って離す（touchend → label.click）</b><span>touchend の中で直接</span></div></div>
+  <div class="row"><span>離した回数 <span class="hit" id="cB">0</span></span></div>
+
+  <div class="pad" id="padC"><div><b>C. 引っ張って離す（touchend → input.click）</b><span>label を通さず switch を直接</span></div></div>
+  <div class="row"><span>離した回数 <span class="hit" id="cC">0</span></span></div>
+
+  <div class="pad" id="padD"><label class="cover" aria-hidden="true"><input type="checkbox" switch class="hidden-switch"></label><div style="pointer-events:none"><b>D. 枠全体が label（タップ）</b><span>まず軽くタップ → 振動すれば基準OK。次に引っ張って離す</span></div></div>
+  <div class="row"><span>タップ（click）<span class="hit" id="cD">0</span></span><span>引っ張って離した <span class="hit" id="cD2">0</span></span></div>
+
+  <div class="pad" id="padE"><div><b>E. 押した瞬間（touchstart → label.click）</b><span>指を置いたときに振動するか</span></div></div>
+  <div class="row"><span>押した回数 <span class="hit" id="cE">0</span></span></div>
+
+  <div class="pad" id="padF"><input type="checkbox" switch class="bigswitch" id="bigF"><div style="pointer-events:none"><b>F. 巨大な透明スイッチ（横に引っ張る）</b><span>左右にスワイプ。途中や離したときに振動するか</span></div></div>
+  <div class="row"><span>切り替わった回数 <span class="hit" id="cF">0</span></span></div>
+
+  <div class="pad" id="padG"><input type="checkbox" switch class="bigswitch" id="bigG"><div style="pointer-events:none"><b>G. 巨大な透明スイッチ（縦・斜めに引っ張る）</b><span>ゲームのように好きな向きへ引っ張って離す</span></div></div>
+  <div class="row"><span>切り替わった回数 <span class="hit" id="cG">0</span></span></div>
+
+  <p class="ua" id="ua"></p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const label = $('hiddenLabel'), input = $('hiddenInput');
+  const bump = (id) => { $(id).textContent = +$(id).textContent + 1; };
+  $('ua').textContent = navigator.userAgent;
+  // a drag = pointer moved more than 12px before release
+  function dragPad(pad, onRelease, useTouch) {
+    let sx = 0, sy = 0, moved = false;
+    if (useTouch) {
+      pad.addEventListener('touchstart', (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; moved = false; }, { passive: true });
+      pad.addEventListener('touchmove', (e) => { const t = e.touches[0]; if (Math.hypot(t.clientX - sx, t.clientY - sy) > 12) moved = true; }, { passive: true });
+      pad.addEventListener('touchend', (e) => { if (moved) onRelease(e); });
+    } else {
+      pad.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; moved = false; pad.setPointerCapture(e.pointerId); });
+      pad.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 12) moved = true; });
+      pad.addEventListener('pointerup', (e) => { if (moved) onRelease(e); });
+    }
+  }
+  dragPad($('padA'), () => { label.click(); bump('cA'); }, false);
+  dragPad($('padB'), () => { label.click(); bump('cB'); }, true);
+  dragPad($('padC'), () => { input.click(); bump('cC'); }, true);
+  // D: the whole pad is a label; a real tap clicks it natively
+  $('padD').querySelector('label').addEventListener('click', () => bump('cD'));
+  dragPad($('padD'), () => bump('cD2'), true);
+  $('padE').addEventListener('touchstart', () => { label.click(); bump('cE'); }, { passive: true });
+  $('bigF').addEventListener('change', () => bump('cF'));
+  $('bigG').addEventListener('change', () => bump('cG'));
+</script>
+</body>
+</html>
